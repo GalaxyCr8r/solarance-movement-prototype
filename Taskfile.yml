@@ -1,0 +1,20 @@
+
+version: '3'
+
+tasks:
+
+  generate:
+    desc: "Client: Generate Bindings"
+    cmds:
+      - spacetime generate --lang rust -p spacetimedb --out-dir src/module_bindings -y
+  
+  publish:
+    desc: "Publish to SpacetimeDB"
+    dir: spacetimedb/
+    cmds:
+      - spacetime publish solarance-movement-prototype
+
+  delete:
+    desc: "Deletes Prototype Database"
+    cmds:
+      - spacetime delete solarance-movement-prototype -y
