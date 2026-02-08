@@ -10,7 +10,8 @@ fn main() {
     let host: String = env::var("SPACETIMEDB_HOST").unwrap_or("http://localhost:3000".to_string());
 
     // The module name we chose when we published our module.
-    let db_name: String = env::var("SPACETIMEDB_DB_NAME").unwrap_or("my-db".to_string());
+    let db_name: String =
+        env::var("SPACETIMEDB_DB_NAME").unwrap_or("solarance-movement-prototype".to_string());
 
     // Connect to the database
     let conn = DbConnection::builder()
