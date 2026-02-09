@@ -1,6 +1,9 @@
+#[path = "../../solarance-shared/src/physics.rs"]
 mod physics;
+
 use crate::physics::{predict_movement, rotation_to_vector, MovementState, Vec2};
 use spacetimedb::{log, reducer, table, Identity, ReducerContext, Table};
+use spacetimedsl::Timestamp;
 
 #[table(name = ship_stats, public)]
 pub struct ShipStats {
@@ -40,7 +43,7 @@ pub fn on_connect(ctx: &ReducerContext) {
                 velocity: Vec2 { x: 0.0, y: 0.0 },
                 rotation: 0.0,
                 angular_velocity: 0.0,
-                last_update_time: ctx.timestamp.unix_micros(),
+                last_update_time: ctx.timestamp().to_micros_since_unix_epoch(),
             },
         });
     }
