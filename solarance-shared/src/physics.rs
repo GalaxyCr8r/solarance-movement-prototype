@@ -1,4 +1,4 @@
-use spacetimedb::SpacetimeType;
+use spacetimedb::{SpacetimeType, Timestamp};
 
 #[derive(SpacetimeType, Clone, Copy, Debug)]
 pub struct Vec2 {
@@ -15,11 +15,11 @@ pub struct MovementState {
     // Degrees per second
     pub angular_velocity: f32,
     // Microseconds
-    pub last_update_time: u64,
+    pub last_update_time: i64,
 }
 
 /// shared logic to calculate the current position and rotation based on elapsed time.
-pub fn predict_movement(state: &MovementState, current_time: u64) -> (Vec2, f32) {
+pub fn predict_movement(state: &MovementState, current_time: i64) -> (Vec2, f32) {
     if state.last_update_time == 0 || current_time <= state.last_update_time {
         return (state.pos, state.rotation);
     }

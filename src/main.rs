@@ -3,7 +3,7 @@ use module_bindings::*;
 use std::env;
 use std::io::{self, Read};
 
-use spacetimedb_sdk::{DbContext, Table};
+use spacetimedb_sdk::{DbContext, Table, Timestamp};
 
 fn main() {
     // The URI of the SpacetimeDB instance hosting our chat module.

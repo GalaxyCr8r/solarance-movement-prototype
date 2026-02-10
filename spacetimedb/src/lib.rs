@@ -1,8 +1,5 @@
-#[path = "../../solarance-shared/src/physics.rs"]
-mod physics;
-
-use crate::physics::{predict_movement, rotation_to_vector, MovementState, Vec2};
-use spacetimedb::{log, reducer, table, Identity, ReducerContext, Table};
+use solarance_shared::physics::{predict_movement, rotation_to_vector, MovementState, Vec2};
+use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 use spacetimedsl::Timestamp;
 
 #[table(name = ship_stats, public)]
@@ -69,8 +66,10 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
     let clamped_speed = meters_per_second.clamp(0.0, stats.max_speed);
 
     // 2. Synchronize current position BEFORE changing trajectory
-    let (current_pos, current_rot) =
-        predict_movement(&player_ship.movement, ctx.timestamp.unix_micros());
+    let (current_pos, current_rot) = predict_movement(
+        &player_ship.movement,
+        ctx.timestamp.to_micros_since_unix_epoch(),
+    );
 
     // 3. Update the movement state
     // In Asteroids, thrust adds to the vector. In EV, it's often direct heading velocity.
@@ -86,7 +85,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
         velocity: new_velocity,
         rotation: current_rot,
         angular_velocity: player_ship.movement.angular_velocity,
-        last_update_time: ctx.timestamp.unix_micros(),
+        last_update_time: ctx.timestamp.to_micros_since_unix_epoch(),
     };
 
     // 4. Update Database
@@ -114,8 +113,10 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
     let clamped_turn = degrees_per_second.clamp(-stats.max_turn_rate, stats.max_turn_rate);
 
     // 2. Synchronize current position/rotation
-    let (current_pos, current_rot) =
-        predict_movement(&player_ship.movement, ctx.timestamp.unix_micros());
+    let (current_pos, current_rot) = predict_movement(
+        &player_ship.movement,
+        ctx.timestamp.to_micros_since_unix_epoch(),
+    );
 
     // 3. Update trajectory
     player_ship.movement = MovementState {
@@ -123,7 +124,7 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
         velocity: player_ship.movement.velocity,
         rotation: current_rot,
         angular_velocity: clamped_turn,
-        last_update_time: ctx.timestamp.unix_micros(),
+        last_update_time: ctx.timestamp.to_micros_since_unix_epoch(),
     };
 
     ctx.db.player_ship().entity_id().update(player_ship);
