@@ -1,11 +1,34 @@
 mod module_bindings;
+use macroquad::prelude::{collections::storage, *};
+use macroquad::window::Conf;
 use module_bindings::*;
 use std::env;
 use std::io::{self, Read};
 
 use spacetimedb_sdk::{DbContext, Table, Timestamp};
 
-fn main() {
+/// Configures the game window properties including title, dimensions, and resizability
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "Solarance:Beginnings".to_owned(),
+        window_width: 1600,
+        window_height: 900,
+        window_resizable: false,
+        fullscreen: false,
+        ..Default::default()
+    }
+}
+
+#[egui_macroquad::macroquad::main(window_conf)]
+async fn main() -> Result<(), macroquad::Error> {
+    set_pc_assets_folder("assets");
+    clear_background(BLACK);
+    next_frame().await;
+    connect();
+    Ok(())
+}
+
+fn connect() {
     // The URI of the SpacetimeDB instance hosting our chat module.
     let host: String = env::var("SPACETIMEDB_HOST").unwrap_or("http://localhost:3000".to_string());
 
@@ -28,19 +51,24 @@ fn main() {
         .expect("Failed to connect");
 
     conn.run_threaded();
-
-    // Subscribe to the person table
-    conn.subscription_builder()
-        .on_applied(|_ctx| println!("Subscripted to the person table"))
-        .on_error(|_ctx, e| eprintln!("There was an error when subscring to the person table: {e}"))
-        .subscribe(["SELECT * FROM person"]);
-
-    // Register a callback for when rows are inserted into the person table
-    conn.db().person().on_insert(|_ctx, person| {
-        println!("New person: {}", person.name);
-    });
-
-    println!("Press any key to exit...");
-
-    let _ = io::stdin().read(&mut [0u8]).unwrap();
 }
+
+// fn main() {
+
+//     // Subscribe to the person table
+//     conn.subscription_builder()
+//         .on_applied(|_ctx| println!("Subscripted to the player_ship table"))
+//         .on_error(|_ctx, e| {
+//             eprintln!("There was an error when subscribing to the player_ship table: {e}")
+//         })
+//         .subscribe(["SELECT * FROM player_ship"]);
+
+//     // Register a callback for when rows are inserted into the person table
+//     conn.db().player_ship().on_insert(|_ctx, player_ship| {
+//         println!("New player_ship: eid{}", player_ship.entity_id);
+//     });
+
+//     println!("Press any key to exit...");
+
+//     let _ = io::stdin().read(&mut [0u8]).unwrap();
+// }
