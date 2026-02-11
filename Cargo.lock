@@ -2318,6 +2318,7 @@ dependencies = [
 name = "solarance_movement_prototype"
 version = "0.1.0"
 dependencies = [
+ "egui",
  "egui-macroquad",
  "macroquad",
  "solarance-shared",
