@@ -8,6 +8,10 @@ use std::io::{self, Read};
 
 use spacetimedb_sdk::{DbContext, Table, Timestamp};
 
+pub mod resources;
+
+use resources::Resources;
+
 pub struct GameState<'a> {
     // Game-Wide States
     pub done: bool,
@@ -34,6 +38,10 @@ fn window_conf() -> Conf {
 #[egui_macroquad::macroquad::main(window_conf)]
 async fn main() -> Result<(), macroquad::Error> {
     set_pc_assets_folder("assets");
+
+    let resources = resources::Resources::new().await;
+    storage::store(resources);
+
     clear_background(BLACK);
     next_frame().await;
 
@@ -56,18 +64,37 @@ async fn main() -> Result<(), macroquad::Error> {
     game_state.camera.zoom.y *= -1.0;
     game_state.bg_camera.zoom.y *= -1.0;
 
+    let mut side_panel_rect = egui::Rect::ZERO;
+
     loop {
         clear_background(BLACK);
 
+        // Focus camera on current target (usually the player's ship)
         game_state.camera.target = Vec2::ZERO; //get_player_transform_vec2(&ctx, Vec2::ZERO);
+
+        // Offset camera to account for side panel
+        game_state.camera.target.x -= side_panel_rect.right() / 2.0;
         set_camera(&game_state.camera);
+
+        draw_ship(0.0, 0.0, 0.0);
 
         draw_text("Henlo!", 0.0, 0.0, 42.0, WHITE);
 
+        draw_text(
+            format!("Side Panel Rect: {}", side_panel_rect).as_str(),
+            0.0,
+            42.0,
+            42.0,
+            WHITE,
+        );
+
         egui_macroquad::ui(|egui_ctx| {
-            egui::SidePanel::left("left_panel").show(egui_ctx, |ui| {
-                ui.heading("Solarance:Beginnings");
-            });
+            side_panel_rect = egui::SidePanel::left("left_panel")
+                .show(egui_ctx, |ui| {
+                    ui.heading("Solarance:Beginnings");
+                })
+                .response
+                .rect;
         });
 
         egui_macroquad::draw();
@@ -80,6 +107,21 @@ async fn main() -> Result<(), macroquad::Error> {
     }
 
     Ok(())
+}
+
+fn draw_ship(x: f32, y: f32, rotation_radians: f32) {
+    let resources = storage::get::<Resources>();
+    let ship_texture = &resources.ship_textures.get("lc.phalanx").unwrap();
+    draw_texture_ex(
+        ship_texture,
+        x,
+        y,
+        WHITE,
+        DrawTextureParams {
+            rotation: rotation_radians,
+            ..Default::default()
+        },
+    );
 }
 
 fn connect() -> DbConnection {
@@ -108,23 +150,3 @@ fn connect() -> DbConnection {
 
     conn
 }
-
-// fn main() {
-
-//     // Subscribe to the person table
-//     conn.subscription_builder()
-//         .on_applied(|_ctx| println!("Subscripted to the player_ship table"))
-//         .on_error(|_ctx, e| {
-//             eprintln!("There was an error when subscribing to the player_ship table: {e}")
-//         })
-//         .subscribe(["SELECT * FROM player_ship"]);
-
-//     // Register a callback for when rows are inserted into the person table
-//     conn.db().player_ship().on_insert(|_ctx, player_ship| {
-//         println!("New player_ship: eid{}", player_ship.entity_id);
-//     });
-
-//     println!("Press any key to exit...");
-
-//     let _ = io::stdin().read(&mut [0u8]).unwrap();
-// }
