@@ -39,7 +39,7 @@ fn window_conf() -> Conf {
 async fn main() -> Result<(), macroquad::Error> {
     set_pc_assets_folder("assets");
 
-    let resources = resources::Resources::new().await;
+    let resources = resources::Resources::new().await?;
     storage::store(resources);
 
     clear_background(BLACK);
@@ -78,7 +78,11 @@ async fn main() -> Result<(), macroquad::Error> {
 
         draw_ship(0.0, 0.0, 0.0);
 
-        draw_text("Henlo!", 0.0, 0.0, 42.0, WHITE);
+        draw_ship(0.0, 100.0, 3.14 / 2.0);
+
+        draw_ship(0.0, 200.0, -3.14 / 2.0);
+
+        draw_text("Henlo!", 0.0, 0.0, 16.0, WHITE);
 
         draw_text(
             format!("Side Panel Rect: {}", side_panel_rect).as_str(),
