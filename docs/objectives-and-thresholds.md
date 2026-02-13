@@ -1,6 +1,7 @@
 # Solarance Movement Prototype: Objectives and Thresholds
 
 > Plans never survive contact with the enemy, but you won't survive contact with the enemy without plans.
+>
 > - Anonymous
 
 I, Karl Nyborg, created this repo to get away from the already monolithic Solarance: Beginnings codebase, and all the baggage therein. I want to try to make a more modular and maintainable codebase, but that comes secondary to developing, testing, and iterating on the movement system.
@@ -9,7 +10,7 @@ Game developement is not the same as commerical software development. Games live
 
 ## Overview
 
-There are thresholds and objectives, thresholds are the minimum requirements to consider the movement system good, objectives are the things that will make the movement system great. The primary threshold is to attempt to make asteroids-like movement feel good within the constraints of a SpacetimeDB backend and MMO architecture. The primary objective is to make inter-sector and inter-stellar movement feel good as well.
+There are _thresholds_ and _objectives_, _thresholds_ are the minimum requirements to consider the movement system good, _objectives_ are the things that will make the movement system great. The primary _threshold_ is to attempt to make asteroids-like movement feel good within the constraints of a SpacetimeDB backend and MMO architecture. The secondary _objective_ is to make inter-sector and inter-stellar movement feel good as well.
 
 ## Defintions
 
@@ -40,7 +41,7 @@ Listed in no particular order. These would be good things to investigate before 
 
 ## 3. Prototype warpdrive usage for inter-stellar movement
 
-## 4. Prototype automatic sector creation 
+## 4. Prototype automatic sector creation
 
 Could be useful for interdiction combat and exploration of new sectors.
 

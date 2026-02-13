@@ -4,5 +4,6 @@
     "${workspaceFolder}/spacetimedb/Cargo.toml",
     "${workspaceFolder}/solarance-shared/Cargo.toml",
     "${workspaceFolder}/Cargo.toml"
-  ]
+  ],
+  "folder-color.pathColors": []
 }

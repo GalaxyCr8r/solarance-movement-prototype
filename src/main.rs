@@ -1,16 +1,19 @@
-mod module_bindings;
 use macroquad::math::Vec2;
 use macroquad::prelude::{collections::storage, *};
 use macroquad::window::Conf;
-use module_bindings::*;
-use std::env;
-use std::io::{self, Read};
 
-use spacetimedb_sdk::{DbContext, Table, Timestamp};
+use spacetimedb_sdk::*;
+use std::result::Result;
 
 pub mod resources;
-
 use resources::Resources;
+
+mod module_bindings;
+use module_bindings::*;
+mod gui_side_panel;
+mod render;
+use render::*;
+mod connection;
 
 pub struct GameState<'a> {
     // Game-Wide States
@@ -39,7 +42,7 @@ fn window_conf() -> Conf {
 async fn main() -> Result<(), macroquad::Error> {
     set_pc_assets_folder("assets");
 
-    let resources = resources::Resources::new().await?;
+    let resources = Resources::new().await?;
     storage::store(resources);
 
     clear_background(BLACK);
@@ -47,7 +50,7 @@ async fn main() -> Result<(), macroquad::Error> {
 
     let mut game_state = GameState {
         done: false,
-        ctx: &connect(),
+        ctx: &connection::connect(),
         camera: Camera2D::from_display_rect(Rect {
             x: 0.0,
             y: 0.0,
@@ -76,29 +79,16 @@ async fn main() -> Result<(), macroquad::Error> {
         game_state.camera.target.x -= side_panel_rect.right() / 2.0;
         set_camera(&game_state.camera);
 
-        draw_ship(0.0, 0.0, 0.0);
+        // Iterate through the PlayerShip ctx table and draw each ship
+        for obj in game_state.ctx.db.space_ship().iter() {
+            let pos = obj.movement.pos;
+            draw_ship(pos.x, pos.y, obj.movement.rotation);
+        }
 
-        draw_ship(0.0, 100.0, 3.14 / 2.0);
-
-        draw_ship(0.0, 200.0, -3.14 / 2.0);
-
-        draw_text("Henlo!", 0.0, 0.0, 16.0, WHITE);
-
-        draw_text(
-            format!("Side Panel Rect: {}", side_panel_rect).as_str(),
-            0.0,
-            42.0,
-            42.0,
-            WHITE,
-        );
+        //draw_text("Henlo!", 0.0, 0.0, 16.0, WHITE);
 
         egui_macroquad::ui(|egui_ctx| {
-            side_panel_rect = egui::SidePanel::left("left_panel")
-                .show(egui_ctx, |ui| {
-                    ui.heading("Solarance:Beginnings");
-                })
-                .response
-                .rect;
+            side_panel_rect = gui_side_panel::draw_side_panel_contents(egui_ctx);
         });
 
         egui_macroquad::draw();
@@ -111,46 +101,4 @@ async fn main() -> Result<(), macroquad::Error> {
     }
 
     Ok(())
-}
-
-fn draw_ship(x: f32, y: f32, rotation_radians: f32) {
-    let resources = storage::get::<Resources>();
-    let ship_texture = &resources.ship_textures.get("lc.phalanx").unwrap();
-    draw_texture_ex(
-        ship_texture,
-        x,
-        y,
-        WHITE,
-        DrawTextureParams {
-            rotation: rotation_radians,
-            ..Default::default()
-        },
-    );
-}
-
-fn connect() -> DbConnection {
-    // The URI of the SpacetimeDB instance hosting our chat module.
-    let host: String = env::var("SPACETIMEDB_HOST").unwrap_or("http://localhost:3000".to_string());
-
-    // The module name we chose when we published our module.
-    let db_name: String =
-        env::var("SPACETIMEDB_DB_NAME").unwrap_or("solarance-movement-prototype".to_string());
-
-    // Connect to the database
-    let conn = DbConnection::builder()
-        .with_module_name(db_name)
-        .with_uri(host)
-        .on_connect(|_, _, _| {
-            println!("Connected to SpacetimeDB");
-        })
-        .on_connect_error(|_ctx, e| {
-            eprintln!("Connection error: {:?}", e);
-            std::process::exit(1);
-        })
-        .build()
-        .expect("Failed to connect");
-
-    conn.run_threaded();
-
-    conn
 }

@@ -2,16 +2,16 @@ use solarance_shared::physics::{predict_movement, rotation_to_vector, MovementSt
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 use spacetimedsl::Timestamp;
 
-#[table(name = ship_stats, public)]
-pub struct ShipStats {
+#[table(name = ship_config, public)]
+pub struct ShipConfig {
     #[primary_key]
     pub ship_config_id: u32,
     pub max_speed: f32,     // meters per second
     pub max_turn_rate: f32, // degrees per second
 }
 
-#[table(name = player_ship, public)]
-pub struct PlayerShip {
+#[table(name = space_ship, public)]
+pub struct SpaceShip {
     #[primary_key]
     pub entity_id: Identity,
     pub ship_config_id: u32,
@@ -21,18 +21,18 @@ pub struct PlayerShip {
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {
     // Seed initial ship types
-    ctx.db.ship_stats().insert(ShipStats {
+    ctx.db.ship_config().insert(ShipConfig {
         ship_config_id: 1,
         max_speed: 50.0,
-        max_turn_rate: 180.0,
+        max_turn_rate: 45.0,
     });
 }
 
 #[reducer(client_connected)]
 pub fn on_connect(ctx: &ReducerContext) {
     // Spawn a ship for the player if they don't have one
-    if ctx.db.player_ship().entity_id().find(&ctx.sender).is_none() {
-        ctx.db.player_ship().insert(PlayerShip {
+    if ctx.db.space_ship().entity_id().find(&ctx.sender).is_none() {
+        ctx.db.space_ship().insert(SpaceShip {
             entity_id: ctx.sender,
             ship_config_id: 1,
             movement: MovementState {
@@ -48,18 +48,18 @@ pub fn on_connect(ctx: &ReducerContext) {
 
 #[reducer]
 pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Result<(), String> {
-    let mut player_ship = ctx
+    let mut space_ship = ctx
         .db
-        .player_ship()
+        .space_ship()
         .entity_id()
         .find(&ctx.sender)
         .ok_or("Ship not found")?;
 
     let stats = ctx
         .db
-        .ship_stats()
+        .ship_config()
         .ship_config_id()
-        .find(&player_ship.ship_config_id)
+        .find(&space_ship.ship_config_id)
         .ok_or("Ship stats not found")?;
 
     // 1. Enforce Server-Side Speed Limits
@@ -67,7 +67,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
 
     // 2. Synchronize current position BEFORE changing trajectory
     let (current_pos, current_rot) = predict_movement(
-        &player_ship.movement,
+        &space_ship.movement,
         ctx.timestamp.to_micros_since_unix_epoch(),
     );
 
@@ -80,33 +80,33 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
         y: dir.y * clamped_speed,
     };
 
-    player_ship.movement = MovementState {
+    space_ship.movement = MovementState {
         pos: current_pos,
         velocity: new_velocity,
         rotation: current_rot,
-        angular_velocity: player_ship.movement.angular_velocity,
+        angular_velocity: space_ship.movement.angular_velocity,
         last_update_time: ctx.timestamp.to_micros_since_unix_epoch(),
     };
 
     // 4. Update Database
-    ctx.db.player_ship().entity_id().update(player_ship);
+    ctx.db.space_ship().entity_id().update(space_ship);
     Ok(())
 }
 
 #[reducer]
 pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Result<(), String> {
-    let mut player_ship = ctx
+    let mut space_ship = ctx
         .db
-        .player_ship()
+        .space_ship()
         .entity_id()
         .find(&ctx.sender)
         .ok_or("Ship not found")?;
 
     let stats = ctx
         .db
-        .ship_stats()
+        .ship_config()
         .ship_config_id()
-        .find(&player_ship.ship_config_id)
+        .find(&space_ship.ship_config_id)
         .ok_or("Ship stats not found")?;
 
     // 1. Enforce Turn Limits
@@ -114,19 +114,19 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
 
     // 2. Synchronize current position/rotation
     let (current_pos, current_rot) = predict_movement(
-        &player_ship.movement,
+        &space_ship.movement,
         ctx.timestamp.to_micros_since_unix_epoch(),
     );
 
     // 3. Update trajectory
-    player_ship.movement = MovementState {
+    space_ship.movement = MovementState {
         pos: current_pos,
-        velocity: player_ship.movement.velocity,
+        velocity: space_ship.movement.velocity,
         rotation: current_rot,
         angular_velocity: clamped_turn,
         last_update_time: ctx.timestamp.to_micros_since_unix_epoch(),
     };
 
-    ctx.db.player_ship().entity_id().update(player_ship);
+    ctx.db.space_ship().entity_id().update(space_ship);
     Ok(())
 }

@@ -1,4 +1,4 @@
-use spacetimedb::{SpacetimeType, Timestamp};
+use spacetimedb::SpacetimeType;
 
 #[derive(SpacetimeType, Clone, Copy, Debug)]
 pub struct Vec2 {
