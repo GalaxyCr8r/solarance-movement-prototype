@@ -9,12 +9,13 @@ pub struct Vec2 {
 #[derive(SpacetimeType, Clone, Copy, Debug)]
 pub struct MovementState {
     pub pos: Vec2,
-    pub velocity: Vec2,
-    // Degrees
+    /// Pixels per second
+    pub velocity: f32,
+    /// Degrees
     pub rotation: f32,
-    // Degrees per second
+    /// Degrees per second
     pub angular_velocity: f32,
-    // Microseconds
+    /// Microseconds
     pub last_update_time: i64,
 }
 

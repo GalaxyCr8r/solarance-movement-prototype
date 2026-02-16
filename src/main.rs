@@ -94,6 +94,8 @@ async fn main() -> Result<(), macroquad::Error> {
         egui_macroquad::draw();
         next_frame().await;
 
+        handle_input(game_state.ctx);
+
         if game_state.done {
             let _ = game_state.ctx.disconnect();
             break;
@@ -101,4 +103,50 @@ async fn main() -> Result<(), macroquad::Error> {
     }
 
     Ok(())
+}
+
+/// Handles player input and calls the proper reducers if the controls have changed.
+fn handle_input(ctx: &DbConnection) {
+    let player_ship = {
+        match ctx.db.space_ship().entity_id().find(&ctx.identity()) {
+            Some(ship) => ship,
+            None => return,
+        }
+    };
+
+    let mut changed = false;
+    let mut new_angular_velocity = player_ship.movement.angular_velocity;
+    let mut new_velocity = player_ship.movement.velocity;
+
+    if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
+        new_angular_velocity += 0.42;
+        changed = true;
+    }
+    if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
+        new_angular_velocity -= 0.42;
+        changed = true;
+    }
+    if is_key_down(KeyCode::Down) || is_key_down(KeyCode::S) {
+        new_velocity -= 1.337;
+        changed = true;
+    } //else {
+      //     if controller.down {
+      //         controller.down = false;
+      //         changed = true;
+      //     }
+      // }
+    if is_key_down(KeyCode::Up) || is_key_down(KeyCode::W) {
+        new_velocity += 1.337;
+        changed = true;
+    } //else {
+      //     if controller.up {
+      //         controller.up = false;
+      //         changed = true;
+      //     }
+      // }
+
+    if changed {
+        ctx.reducers().set_forward_thrust(new_velocity);
+        ctx.reducers().set_turn_velocity(new_angular_velocity);
+    }
 }

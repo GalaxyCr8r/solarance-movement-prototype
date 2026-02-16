@@ -37,7 +37,7 @@ pub fn on_connect(ctx: &ReducerContext) {
             ship_config_id: 1,
             movement: MovementState {
                 pos: Vec2 { x: 0.0, y: 0.0 },
-                velocity: Vec2 { x: 0.0, y: 0.0 },
+                velocity: 0.0,
                 rotation: 0.0,
                 angular_velocity: 0.0,
                 last_update_time: ctx.timestamp().to_micros_since_unix_epoch(),
