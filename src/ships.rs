@@ -35,28 +35,68 @@ impl ClientShip {
     }
 }
 
+/// Clock synchronization with server
+#[derive(Clone, Debug)]
+pub struct ClockSync {
+    server_offset_micros: i64, // server_time - client_time
+}
+
+impl ClockSync {
+    pub fn new() -> Self {
+        Self {
+            server_offset_micros: 0,
+        }
+    }
+
+    /// Update offset based on server timestamp
+    pub fn update_from_server(&mut self, server_time_micros: i64) {
+        let client_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as i64;
+
+        self.server_offset_micros = server_time_micros - client_time;
+    }
+
+    /// Get current server time estimate
+    pub fn get_server_time(&self) -> i64 {
+        let client_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as i64;
+
+        client_time + self.server_offset_micros
+    }
+}
+
 /// Thread-safe ship manager for dead reckoning
 #[derive(Clone)]
 pub struct ShipManager {
     ships: Arc<RwLock<HashMap<Identity, ClientShip>>>,
+    clock_sync: Arc<RwLock<ClockSync>>,
 }
 
 impl ShipManager {
     pub fn new() -> Self {
         Self {
             ships: Arc::new(RwLock::new(HashMap::new())),
+            clock_sync: Arc::new(RwLock::new(ClockSync::new())),
         }
     }
 
     /// Sync ships from SpacetimeDB tables
     pub fn sync_from_db(&self, db: &RemoteTables) {
         let mut ships = self.ships.write().unwrap();
+        let mut clock_sync = self.clock_sync.write().unwrap();
 
         // Get current ships from database
         let db_ships: HashMap<Identity, ClientShip> = db
             .space_ship()
             .iter()
             .map(|ship| {
+                // Update clock sync from server timestamp
+                clock_sync.update_from_server(ship.movement.last_update_time);
+
                 (
                     ship.entity_id,
                     ClientShip {
@@ -77,8 +117,10 @@ impl ShipManager {
         }
     }
 
-    pub fn render(&self, current_time_micros: i64) {
+    pub fn render(&self) {
         let ships = self.ships.read().unwrap();
+        let clock_sync = self.clock_sync.read().unwrap();
+        let current_time_micros = clock_sync.get_server_time();
 
         for (_eid, ship) in ships.iter() {
             let (pos, rotation) = ship.predict_current(current_time_micros);

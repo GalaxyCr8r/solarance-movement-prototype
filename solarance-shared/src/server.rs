@@ -1,0 +1,46 @@
+use spacetimedb::SpacetimeType;
+
+#[derive(SpacetimeType, Clone, Copy, Debug)]
+pub struct Vec2 {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(SpacetimeType, Clone, Copy, Debug)]
+pub struct MovementState {
+    pub pos: Vec2,
+    /// Pixels per second
+    pub velocity: f32,
+    /// Degrees
+    pub rotation: f32,
+    /// Degrees per second
+    pub angular_velocity: f32,
+    /// Microseconds
+    pub last_update_time: i64,
+}
+
+pub fn convert_to_movement_state(state: &MovementState) -> crate::physics::MovementState {
+    crate::physics::MovementState {
+        pos: crate::physics::Vec2 {
+            x: state.pos.x,
+            y: state.pos.y,
+        },
+        velocity: state.velocity,
+        rotation: state.rotation,
+        angular_velocity: state.angular_velocity,
+        last_update_time: state.last_update_time,
+    }
+}
+
+pub fn convert_from_movement_state(state: &crate::physics::MovementState) -> MovementState {
+    MovementState {
+        pos: Vec2 {
+            x: state.pos.x,
+            y: state.pos.y,
+        },
+        velocity: state.velocity,
+        rotation: state.rotation,
+        angular_velocity: state.angular_velocity,
+        last_update_time: state.last_update_time,
+    }
+}

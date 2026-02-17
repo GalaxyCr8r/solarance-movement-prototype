@@ -10,10 +10,9 @@ use resources::Resources;
 
 mod module_bindings;
 use module_bindings::*;
+mod connection;
 mod gui_side_panel;
 mod render;
-use render::*;
-mod connection;
 mod ships;
 use ships::*;
 
@@ -84,7 +83,7 @@ async fn main() -> Result<(), macroquad::Error> {
         game_state.camera.target.x -= side_panel_rect.right() / 2.0;
         set_camera(&game_state.camera);
 
-        // Iterate through the PlayerShip ctx table and draw each ship
+        // Render ships with synchronized server time
         ship_manager.render();
 
         egui_macroquad::ui(|egui_ctx| {

@@ -1,12 +1,10 @@
-use spacetimedb::SpacetimeType;
-
-#[derive(SpacetimeType, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Vec2 {
     pub x: f32,
     pub y: f32,
 }
 
-#[derive(SpacetimeType, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct MovementState {
     pub pos: Vec2,
     /// Pixels per second

@@ -1,4 +1,5 @@
-use solarance_shared::physics::{predict_movement, rotation_to_vector, MovementState, Vec2};
+use solarance_shared::physics::predict_movement;
+use solarance_shared::server::*;
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 use spacetimedsl::Timestamp;
 
@@ -67,7 +68,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
 
     // 2. Synchronize current position BEFORE changing trajectory
     let (current_pos, current_rot) = predict_movement(
-        &space_ship.movement,
+        &convert_to_movement_state(&space_ship.movement),
         ctx.timestamp.to_micros_since_unix_epoch(),
     );
 
@@ -81,7 +82,10 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
     // };
 
     space_ship.movement = MovementState {
-        pos: current_pos,
+        pos: Vec2 {
+            x: current_pos.x,
+            y: current_pos.y,
+        },
         velocity: clamped_speed,
         rotation: current_rot,
         angular_velocity: space_ship.movement.angular_velocity,
@@ -114,13 +118,16 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
 
     // 2. Synchronize current position/rotation
     let (current_pos, current_rot) = predict_movement(
-        &space_ship.movement,
+        &convert_to_movement_state(&space_ship.movement),
         ctx.timestamp.to_micros_since_unix_epoch(),
     );
 
     // 3. Update trajectory
     space_ship.movement = MovementState {
-        pos: current_pos,
+        pos: Vec2 {
+            x: current_pos.x,
+            y: current_pos.y,
+        },
         velocity: space_ship.movement.velocity,
         rotation: current_rot,
         angular_velocity: clamped_turn,
