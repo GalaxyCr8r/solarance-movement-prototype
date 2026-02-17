@@ -14,6 +14,8 @@ mod gui_side_panel;
 mod render;
 use render::*;
 mod connection;
+mod ships;
+use ships::*;
 
 pub struct GameState<'a> {
     // Game-Wide States
@@ -67,9 +69,12 @@ async fn main() -> Result<(), macroquad::Error> {
     game_state.camera.zoom.y *= -1.0;
     game_state.bg_camera.zoom.y *= -1.0;
 
+    let ship_manager = ShipManager::new();
+
     let mut side_panel_rect = egui::Rect::ZERO;
 
     loop {
+        ship_manager.sync_from_db(&game_state.ctx.db);
         clear_background(BLACK);
 
         // Focus camera on current target (usually the player's ship)
@@ -80,12 +85,7 @@ async fn main() -> Result<(), macroquad::Error> {
         set_camera(&game_state.camera);
 
         // Iterate through the PlayerShip ctx table and draw each ship
-        for obj in game_state.ctx.db.space_ship().iter() {
-            let pos = obj.movement.pos;
-            draw_ship(pos.x, pos.y, obj.movement.rotation);
-        }
-
-        //draw_text("Henlo!", 0.0, 0.0, 16.0, WHITE);
+        ship_manager.render();
 
         egui_macroquad::ui(|egui_ctx| {
             side_panel_rect = gui_side_panel::draw_side_panel_contents(egui_ctx);
@@ -129,24 +129,14 @@ fn handle_input(ctx: &DbConnection) {
     if is_key_down(KeyCode::Down) || is_key_down(KeyCode::S) {
         new_velocity -= 1.337;
         changed = true;
-    } //else {
-      //     if controller.down {
-      //         controller.down = false;
-      //         changed = true;
-      //     }
-      // }
+    }
     if is_key_down(KeyCode::Up) || is_key_down(KeyCode::W) {
         new_velocity += 1.337;
         changed = true;
-    } //else {
-      //     if controller.up {
-      //         controller.up = false;
-      //         changed = true;
-      //     }
-      // }
+    }
 
     if changed {
-        ctx.reducers().set_forward_thrust(new_velocity);
-        ctx.reducers().set_turn_velocity(new_angular_velocity);
+        let _ = ctx.reducers().set_forward_thrust(new_velocity);
+        let _ = ctx.reducers().set_turn_velocity(new_angular_velocity);
     }
 }
