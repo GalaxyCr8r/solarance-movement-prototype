@@ -1,3 +1,5 @@
+use macroquad::color::WHITE;
+use macroquad::text::draw_text;
 use solarance_shared::physics;
 use spacetimedb_sdk::*;
 use std::collections::HashMap;
@@ -95,7 +97,7 @@ impl ShipManager {
             .iter()
             .map(|ship| {
                 // Update clock sync from server timestamp
-                clock_sync.update_from_server(ship.movement.last_update_time);
+                //clock_sync.update_from_server(ship.movement.last_update_time);
 
                 (
                     ship.entity_id,
@@ -124,7 +126,14 @@ impl ShipManager {
 
         for (_eid, ship) in ships.iter() {
             let (pos, rotation) = ship.predict_current(current_time_micros);
-            draw_ship(pos.x, pos.y, rotation);
+            draw_ship(pos.x, pos.y, rotation.to_radians());
+            draw_text(
+                &format!("{}", (current_time_micros - ship.movement.last_update_time)),
+                pos.x,
+                pos.y,
+                20.0,
+                WHITE,
+            );
         }
     }
 

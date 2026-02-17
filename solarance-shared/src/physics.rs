@@ -27,8 +27,8 @@ pub fn predict_movement(state: &MovementState, current_time: i64) -> (Vec2, f32)
 
     // Linear move: pos = pos + (vel * dt)
     let new_pos = Vec2 {
-        x: state.pos.x + (state.velocity * dt),
-        y: state.pos.y + (state.velocity * dt),
+        x: state.pos.x + (state.rotation.to_radians().cos() * state.velocity * dt),
+        y: state.pos.y + (state.rotation.to_radians().sin() * state.velocity * dt),
     };
 
     // Angular move: rot = rot + (ang_vel * dt)
