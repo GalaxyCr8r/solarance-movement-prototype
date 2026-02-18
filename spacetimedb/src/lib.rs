@@ -65,6 +65,9 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
 
     // 1. Enforce Server-Side Speed Limits
     let clamped_speed = meters_per_second.clamp(0.0, stats.max_speed);
+    if clamped_speed == space_ship.movement.velocity {
+        return Ok(());
+    }
 
     // 2. Synchronize current position BEFORE changing trajectory
     let (current_pos, current_rot) = predict_movement(
@@ -114,7 +117,14 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
         .ok_or("Ship stats not found")?;
 
     // 1. Enforce Turn Limits
-    let clamped_turn = degrees_per_second.clamp(-stats.max_turn_rate, stats.max_turn_rate);
+    let mut clamped_turn = degrees_per_second.clamp(-stats.max_turn_rate, stats.max_turn_rate);
+    if clamped_turn.abs() < 0.25 {
+        clamped_turn = 0.0;
+    }
+
+    if clamped_turn == space_ship.movement.angular_velocity {
+        return Ok(());
+    }
 
     // 2. Synchronize current position/rotation
     let (current_pos, current_rot) = predict_movement(

@@ -113,29 +113,27 @@ fn handle_input(ctx: &DbConnection) {
         }
     };
 
-    let mut changed = false;
     let mut new_angular_velocity = player_ship.movement.angular_velocity;
     let mut new_velocity = player_ship.movement.velocity;
 
     if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
         new_angular_velocity += 0.42;
-        changed = true;
     }
     if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
         new_angular_velocity -= 0.42;
-        changed = true;
     }
     if is_key_down(KeyCode::Down) || is_key_down(KeyCode::S) {
         new_velocity -= 1.337;
-        changed = true;
     }
     if is_key_down(KeyCode::Up) || is_key_down(KeyCode::W) {
         new_velocity += 1.337;
-        changed = true;
     }
 
-    if changed {
-        let _ = ctx.reducers().set_forward_thrust(new_velocity);
+    if new_angular_velocity != player_ship.movement.angular_velocity {
         let _ = ctx.reducers().set_turn_velocity(new_angular_velocity);
+    }
+
+    if new_velocity != player_ship.movement.velocity {
+        let _ = ctx.reducers().set_forward_thrust(new_velocity);
     }
 }

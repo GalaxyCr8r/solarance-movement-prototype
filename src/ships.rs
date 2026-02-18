@@ -51,6 +51,7 @@ impl ClockSync {
     }
 
     /// Update offset based on server timestamp
+    /// Possibly deprecrated because it seems like "client_time" is rather accurate enough...
     pub fn update_from_server(&mut self, server_time_micros: i64) {
         let client_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -96,9 +97,6 @@ impl ShipManager {
             .space_ship()
             .iter()
             .map(|ship| {
-                // Update clock sync from server timestamp
-                //clock_sync.update_from_server(ship.movement.last_update_time);
-
                 (
                     ship.entity_id,
                     ClientShip {
@@ -128,9 +126,19 @@ impl ShipManager {
             let (pos, rotation) = ship.predict_current(current_time_micros);
             draw_ship(pos.x, pos.y, rotation.to_radians());
             draw_text(
-                &format!("{}", (current_time_micros - ship.movement.last_update_time)),
+                &format!(
+                    "{}",
+                    (current_time_micros - ship.movement.last_update_time) / 1_000
+                ),
                 pos.x,
                 pos.y,
+                20.0,
+                WHITE,
+            );
+            draw_text(
+                &format!("{}", ship.movement.angular_velocity),
+                pos.x,
+                pos.y - 20.0,
                 20.0,
                 WHITE,
             );
