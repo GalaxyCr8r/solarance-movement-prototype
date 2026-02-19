@@ -1,7 +1,9 @@
 use solarance_shared::physics::predict_movement;
-use solarance_shared::server::*;
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 use spacetimedsl::Timestamp;
+
+mod physics;
+use physics::*;
 
 #[table(name = ship_config, public)]
 pub struct ShipConfig {
@@ -16,7 +18,7 @@ pub struct SpaceShip {
     #[primary_key]
     pub entity_id: Identity,
     pub ship_config_id: u32,
-    pub movement: MovementState,
+    pub movement: physics::MovementState,
 }
 
 #[reducer(init)]

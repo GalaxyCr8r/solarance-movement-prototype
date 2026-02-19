@@ -19,9 +19,11 @@ pub struct MovementState {
     pub last_update_time: i64,
 }
 
-pub fn convert_to_movement_state(state: &MovementState) -> crate::physics::MovementState {
-    crate::physics::MovementState {
-        pos: crate::physics::Vec2 {
+pub fn convert_to_movement_state(
+    state: &MovementState,
+) -> solarance_shared::physics::MovementState {
+    solarance_shared::physics::MovementState {
+        pos: solarance_shared::physics::Vec2 {
             x: state.pos.x,
             y: state.pos.y,
         },
@@ -32,7 +34,9 @@ pub fn convert_to_movement_state(state: &MovementState) -> crate::physics::Movem
     }
 }
 
-pub fn convert_from_movement_state(state: &crate::physics::MovementState) -> MovementState {
+pub fn convert_from_movement_state(
+    state: &solarance_shared::physics::MovementState,
+) -> MovementState {
     MovementState {
         pos: Vec2 {
             x: state.pos.x,
