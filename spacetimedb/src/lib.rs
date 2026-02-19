@@ -78,14 +78,6 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
     );
 
     // 3. Update the movement state
-    // In Asteroids, thrust adds to the vector. In EV, it's often direct heading velocity.
-    // Here we calculate the new velocity vector based on current rotation.
-    // let dir = rotation_to_vector(current_rot);
-    // let new_velocity = Vec2 {
-    //     x: dir.x * clamped_speed,
-    //     y: dir.y * clamped_speed,
-    // };
-
     space_ship.movement = MovementState {
         pos: Vec2 {
             x: current_pos.x,
