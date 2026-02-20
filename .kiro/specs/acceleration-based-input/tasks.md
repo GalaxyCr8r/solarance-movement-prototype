@@ -58,8 +58,8 @@ Key changes:
     - Initialize to `InputState { is_thrusting: false, turn_direction: 0 }` in `on_connect()` reducer
     - _Requirements: 5.3, 5.4_
 
-- [ ] 4. Implement acceleration-based physics prediction
-  - [ ] 4.1 Implement linear acceleration prediction (no clamping)
+- [x] 4. Implement acceleration-based physics prediction
+  - [x] 4.1 Implement linear acceleration prediction (no clamping)
     - In `solarance-shared/src/physics.rs::predict_movement()`, add case for non-zero acceleration
     - Calculate final velocity: `v_final = v_initial + acceleration * dt`
     - Calculate position: `x = x₀ + v₀*dt + 0.5*a*dt²` (use kinematic equations)
@@ -73,7 +73,7 @@ Key changes:
     - Verify v = v₀ + at and x = x₀ + v₀t + ½at² (when velocity not clamped)
     - Run 100+ iterations
 
-  - [ ] 4.3 Implement angular acceleration prediction (no clamping)
+  - [x] 4.3 Implement angular acceleration prediction (no clamping)
     - In `solarance-shared/src/physics.rs::predict_movement()`, add case for non-zero angular acceleration
     - Calculate final angular velocity: `ω_final = ω_initial + angular_acceleration * dt`
     - Calculate rotation: `θ = θ₀ + ω₀*dt + 0.5*α*dt²`
@@ -87,7 +87,7 @@ Key changes:
     - Verify ω = ω₀ + αt and θ = θ₀ + ω₀t + ½αt²
     - Run 100+ iterations
 
-  - [ ] 4.5 Implement velocity clamping during prediction
+  - [x] 4.5 Implement velocity clamping during prediction
     - In `solarance-shared/src/physics.rs::predict_movement()`, check if predicted velocity exceeds max_speed
     - If clamped: calculate exact time `t_clamp = (max_speed - v_initial) / acceleration`
     - Apply acceleration until t_clamp, then constant velocity for remaining time
@@ -116,7 +116,7 @@ Key changes:
     - Verify position function is continuous at clamping point (no jumps)
     - Run 100+ iterations
 
-  - [ ] 4.9 Implement angular velocity clamping during prediction
+  - [x] 4.9 Implement angular velocity clamping during prediction
     - In `solarance-shared/src/physics.rs::predict_movement()`, check if predicted angular velocity exceeds max_turn_rate
     - If clamped: calculate exact time `t_clamp_angular = (max_turn_rate - ω_initial) / angular_acceleration`
     - Apply angular acceleration until t_clamp_angular, then constant angular velocity for remaining time
@@ -131,7 +131,7 @@ Key changes:
     - Verify rotation uses piecewise motion
     - Run 100+ iterations
 
-  - [ ] 4.11 Implement combined acceleration and turning
+  - [x] 4.11 Implement combined acceleration and turning
     - In `solarance-shared/src/physics.rs::predict_movement()`, handle case where both accelerations are non-zero
     - Use numerical integration (small fixed-step Euler or RK4) to approximate arc motion with changing speed
     - Handle velocity clamping during numerical integration
