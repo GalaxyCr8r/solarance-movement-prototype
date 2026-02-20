@@ -45,15 +45,15 @@ Key changes:
     - Update `init()` reducer to set reasonable default values (e.g., max_acceleration: 100.0, max_angular_acceleration: 180.0)
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 3. Add InputState to SpaceShip table
-  - [ ] 3.1 Create InputState struct
+- [x] 3. Add InputState to SpaceShip table
+  - [x] 3.1 Create InputState struct
     - Create `InputState` struct in `spacetimedb/src/physics.rs` with fields:
       - `is_thrusting: bool`
       - `turn_direction: i8` (values: -1, 0, 1)
     - Derive `SpacetimeType, Clone, Copy, Debug`
     - _Requirements: 5.1, 5.2_
 
-  - [ ] 3.2 Add InputState field to SpaceShip table
+  - [x] 3.2 Add InputState field to SpaceShip table
     - Add `input_state: InputState` field to `spacetimedb/src/lib.rs::SpaceShip`
     - Initialize to `InputState { is_thrusting: false, turn_direction: 0 }` in `on_connect()` reducer
     - _Requirements: 5.3, 5.4_

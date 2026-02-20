@@ -7,6 +7,12 @@ pub struct Vec2 {
 }
 
 #[derive(SpacetimeType, Clone, Copy, Debug)]
+pub struct InputState {
+    pub is_thrusting: bool,
+    pub turn_direction: i8,
+}
+
+#[derive(SpacetimeType, Clone, Copy, Debug)]
 pub struct MovementState {
     pub pos: Vec2,
     /// Pixels per second

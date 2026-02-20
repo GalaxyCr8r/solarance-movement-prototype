@@ -21,6 +21,7 @@ pub struct SpaceShip {
     pub entity_id: Identity,
     pub ship_config_id: u32,
     pub movement: physics::MovementState,
+    pub input_state: physics::InputState,
 }
 
 #[reducer(init)]
@@ -52,6 +53,10 @@ pub fn on_connect(ctx: &ReducerContext) {
                 angular_acceleration: 0.0,
                 max_speed: 50.0,
                 max_turn_rate: 45.0,
+            },
+            input_state: InputState {
+                is_thrusting: false,
+                turn_direction: 0,
             },
         });
     }
