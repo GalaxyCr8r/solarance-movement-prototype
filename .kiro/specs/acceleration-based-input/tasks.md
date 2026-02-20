@@ -14,7 +14,7 @@ Key changes:
 
 ## Tasks
 
-- [ ] 1. Extend MovementState with acceleration fields
+- [x] 1. Extend MovementState with acceleration fields
   - [x] 1.1 Add acceleration fields to shared MovementState
     - Add `acceleration: f32` (pixels/sec²) to `solarance-shared/src/physics.rs::MovementState`
     - Add `angular_acceleration: f32` (degrees/sec²) to `solarance-shared/src/physics.rs::MovementState`
@@ -164,8 +164,8 @@ Key changes:
 - [ ] 5. Checkpoint - Ensure physics tests pass
   - Ensure all physics property tests pass, ask the user if questions arise.
 
-- [ ] 6. Implement set_thrust_input reducer
-  - [ ] 6.1 Create set_thrust_input reducer
+- [x] 6. Implement set_thrust_input reducer
+  - [x] 6.1 Create set_thrust_input reducer
     - Add `#[reducer] pub fn set_thrust_input(ctx: &ReducerContext, is_thrusting: bool) -> Result<(), String>` in `spacetimedb/src/lib.rs`
     - Find player's ship or return error
     - Check if `ship.input_state.is_thrusting == is_thrusting`, if so return early (no update needed)
@@ -190,8 +190,8 @@ Key changes:
     - Test that acceleration is applied in direction of current rotation
     - _Requirements: 3.1, 3.2_
 
-- [ ] 7. Implement set_turn_input reducer
-  - [ ] 7.1 Create set_turn_input reducer
+- [x] 7. Implement set_turn_input reducer
+  - [x] 7.1 Create set_turn_input reducer
     - Add `#[reducer] pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), String>` in `spacetimedb/src/lib.rs`
     - Validate `turn_direction` is -1, 0, or 1, else return error
     - Find player's ship or return error
