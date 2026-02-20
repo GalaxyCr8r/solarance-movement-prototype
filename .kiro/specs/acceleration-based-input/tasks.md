@@ -2,280 +2,274 @@
 
 ## Overview
 
-This implementation plan breaks down the acceleration-based input system into incremental coding tasks. Each task builds on previous work, with property-based tests placed close to implementation to catch errors early. The plan follows this sequence: extend data models → enhance physics prediction → update server reducers → modify client input handling → integration and testing.
+This plan implements acceleration-based ship control where players press/release thrust and turn buttons, causing ships to accelerate/decelerate naturally rather than instantly changing velocity. The implementation extends the existing dead reckoning physics system with acceleration fields and new input-based reducers.
+
+Key changes:
+
+- Extend MovementState with acceleration fields and velocity limits
+- Add InputState tracking to SpaceShip table
+- Implement new reducers (set_thrust_input, set_turn_input) that set acceleration instead of velocity
+- Enhance predict_movement() to handle constant acceleration with velocity clamping
+- Update client input handling to send discrete button press/release events
 
 ## Tasks
 
-- [ ] 1. Extend MovementState data structure with acceleration and clamping fields
-  - Add `acceleration: f32` field to MovementState in `solarance-shared/src/physics.rs`
-  - Add `angular_acceleration: f32` field to MovementState in `solarance-shared/src/physics.rs`
-  - Add `max_speed: f32` field to MovementState in `solarance-shared/src/physics.rs` (denormalized from ShipConfig so predict_movement can clamp)
-  - Add `max_turn_rate: f32` field to MovementState in `solarance-shared/src/physics.rs` (denormalized from ShipConfig so predict_movement can clamp)
-  - Update MovementState in `spacetimedb/src/physics.rs` with same fields
-  - Update conversion functions between shared and SpacetimeDB types
-  - _Requirements: 2.1, 2.2, 6.1, 6.2_
+- [ ] 1. Extend MovementState with acceleration fields
+  - [x] 1.1 Add acceleration fields to shared MovementState
+    - Add `acceleration: f32` (pixels/sec²) to `solarance-shared/src/physics.rs::MovementState`
+    - Add `angular_acceleration: f32` (degrees/sec²) to `solarance-shared/src/physics.rs::MovementState`
+    - Add `max_speed: f32` (pixels/sec) to `solarance-shared/src/physics.rs::MovementState`
+    - Add `max_turn_rate: f32` (degrees/sec) to `solarance-shared/src/physics.rs::MovementState`
+    - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 1b. Create InputState struct and add to SpaceShip table
-  - Create `InputState` struct in `spacetimedb/src/physics.rs` with `is_thrusting: bool` and `turn_direction: i8` fields
-  - Add `input_state: InputState` field to `SpaceShip` table in `spacetimedb/src/lib.rs`
-  - Update `on_connect` reducer to initialize `input_state` with `is_thrusting: false, turn_direction: 0`
-  - Note: InputState is server-side only — it does NOT go in `solarance-shared` since physics must not depend on it (Requirement 5.5)
-  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+  - [x] 1.2 Add acceleration fields to SpacetimeDB MovementState
+    - Add `acceleration: f32` to `spacetimedb/src/physics.rs::MovementState`
+    - Add `angular_acceleration: f32` to `spacetimedb/src/physics.rs::MovementState`
+    - Add `max_speed: f32` to `spacetimedb/src/physics.rs::MovementState`
+    - Add `max_turn_rate: f32` to `spacetimedb/src/physics.rs::MovementState`
+    - Update `convert_to_movement_state()` to map new fields
+    - Update `convert_from_movement_state()` to map new fields
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ]\* 1.1 Write unit tests for MovementState structure
-  - Test that all fields are present and have correct types
-  - Test conversion functions preserve all fields (including acceleration and clamping fields)
-  - _Requirements: 2.1, 2.2, 2.3, 2.4_
+  - [ ]\* 1.3 Write property test for MovementState serialization round-trip
+    - **Property 10: MovementState serialization round-trip**
+    - **Validates: Requirements 2.5, 2.6**
+    - Generate random MovementState instances with all fields
+    - Test that `convert_to_movement_state()` then `convert_from_movement_state()` preserves all fields
+    - Run 100+ iterations
 
-- [ ]\* 1.2 Write property test for MovementState serialization
-  - **Property 10: MovementState serialization round-trip**
-  - **Validates: Requirements 2.5, 2.6**
+- [x] 2. Extend ShipConfig with acceleration fields
+  - [x] 2.1 Add acceleration configuration to ShipConfig table
+    - Add `max_acceleration: f32` field to `spacetimedb/src/lib.rs::ShipConfig`
+    - Add `max_angular_acceleration: f32` field to `spacetimedb/src/lib.rs::ShipConfig`
+    - Update `init()` reducer to set reasonable default values (e.g., max_acceleration: 100.0, max_angular_acceleration: 180.0)
+    - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 2. Extend ShipConfig with acceleration parameters
-  - Add `max_acceleration: f32` field to ShipConfig table in `spacetimedb/src/lib.rs`
-  - Add `max_angular_acceleration: f32` field to ShipConfig table in `spacetimedb/src/lib.rs`
-  - Update `init` reducer to set default acceleration values (e.g., max_acceleration: 100.0, max_angular_acceleration: 180.0)
-  - _Requirements: 4.1, 4.2, 4.4_
+- [ ] 3. Add InputState to SpaceShip table
+  - [ ] 3.1 Create InputState struct
+    - Create `InputState` struct in `spacetimedb/src/physics.rs` with fields:
+      - `is_thrusting: bool`
+      - `turn_direction: i8` (values: -1, 0, 1)
+    - Derive `SpacetimeType, Clone, Copy, Debug`
+    - _Requirements: 5.1, 5.2_
 
-- [ ]\* 2.1 Write unit test for ShipConfig initialization
-  - Test that init reducer creates ship configs with all acceleration fields populated
-  - _Requirements: 4.4_
+  - [ ] 3.2 Add InputState field to SpaceShip table
+    - Add `input_state: InputState` field to `spacetimedb/src/lib.rs::SpaceShip`
+    - Initialize to `InputState { is_thrusting: false, turn_direction: 0 }` in `on_connect()` reducer
+    - _Requirements: 5.3, 5.4_
 
-- [ ] 3. Implement linear acceleration in predict_movement
-  - Modify `predict_movement` in `solarance-shared/src/physics.rs` to handle linear acceleration
-  - Implement velocity calculation: v = v₀ + at
-  - Implement position calculation for straight-line motion with acceleration: x = x₀ + v₀t + ½at²
-  - Handle case where acceleration is zero (use existing logic)
-  - _Requirements: 1.1, 1.2_
+- [ ] 4. Implement acceleration-based physics prediction
+  - [ ] 4.1 Implement linear acceleration prediction (no clamping)
+    - In `solarance-shared/src/physics.rs::predict_movement()`, add case for non-zero acceleration
+    - Calculate final velocity: `v_final = v_initial + acceleration * dt`
+    - Calculate position: `x = x₀ + v₀*dt + 0.5*a*dt²` (use kinematic equations)
+    - Handle case where acceleration is zero (existing straight-line logic)
+    - _Requirements: 1.1, 1.2_
 
-- [ ]\* 3.1 Write unit tests for linear acceleration
-  - Test ship accelerating from rest reaches expected velocity and position
-  - Test ship with initial velocity and acceleration
-  - Test zero acceleration produces same results as before
-  - _Requirements: 1.1, 1.2_
+  - [ ]\* 4.2 Write property test for linear acceleration kinematic equations
+    - **Property 1: Linear acceleration kinematic equations**
+    - **Validates: Requirements 1.1, 1.2**
+    - Generate random MovementState with non-zero acceleration, zero angular acceleration
+    - Verify v = v₀ + at and x = x₀ + v₀t + ½at² (when velocity not clamped)
+    - Run 100+ iterations
 
-- [ ]\* 3.2 Write property test for linear kinematic equations
-  - **Property 1: Linear acceleration kinematic equations**
-  - **Validates: Requirements 1.1, 1.2**
+  - [ ] 4.3 Implement angular acceleration prediction (no clamping)
+    - In `solarance-shared/src/physics.rs::predict_movement()`, add case for non-zero angular acceleration
+    - Calculate final angular velocity: `ω_final = ω_initial + angular_acceleration * dt`
+    - Calculate rotation: `θ = θ₀ + ω₀*dt + 0.5*α*dt²`
+    - Handle case where angular acceleration is zero (existing rotation logic)
+    - _Requirements: 1.3, 1.4_
 
-- [ ] 4. Implement velocity clamping in predict_movement
-  - Use `max_speed` from MovementState (already denormalized in Task 1) — no signature change needed
-  - Calculate time when velocity reaches max_speed: t_clamp = (max_speed - v₀) / a
-  - Implement piecewise position calculation: accelerate until t_clamp, then constant velocity
-  - Clamp final velocity to max_speed
-  - Handle edge case where velocity is already at max_speed
-  - _Requirements: 1.5, 6.1, 6.3, 6.5_
+  - [ ]\* 4.4 Write property test for angular acceleration kinematic equations
+    - **Property 2: Angular acceleration kinematic equations**
+    - **Validates: Requirements 1.3, 1.4**
+    - Generate random MovementState with non-zero angular acceleration, zero linear acceleration
+    - Verify ω = ω₀ + αt and θ = θ₀ + ω₀t + ½αt²
+    - Run 100+ iterations
 
-- [ ]\* 4.1 Write unit tests for velocity clamping
-  - Test velocity clamped to max_speed when acceleration would exceed it
-  - Test position calculation with clamping
-  - Test edge case where velocity starts at max_speed
-  - _Requirements: 1.5, 6.3_
+  - [ ] 4.5 Implement velocity clamping during prediction
+    - In `solarance-shared/src/physics.rs::predict_movement()`, check if predicted velocity exceeds max_speed
+    - If clamped: calculate exact time `t_clamp = (max_speed - v_initial) / acceleration`
+    - Apply acceleration until t_clamp, then constant velocity for remaining time
+    - Position: `x = x₀ + v₀*t_clamp + 0.5*a*t_clamp² + max_speed*(dt - t_clamp)`
+    - _Requirements: 1.5, 6.1, 6.3_
 
-- [ ]\* 4.2 Write property test for velocity clamping
-  - **Property 3: Velocity clamping**
-  - **Validates: Requirements 1.5, 6.3**
+  - [ ]\* 4.6 Write property test for velocity clamping
+    - **Property 3: Velocity clamping**
+    - **Validates: Requirements 1.5, 6.3**
+    - Generate random MovementState where predicted velocity would exceed max_speed
+    - Verify velocity is clamped to max_speed
+    - Verify position uses piecewise motion (accelerating then constant)
+    - Run 100+ iterations
 
-- [ ]\* 4.3 Write property test for clamp time accuracy
-  - **Property 8: Clamp time calculation accuracy**
-  - **Validates: Requirements 9.2**
+  - [ ]\* 4.7 Write property test for clamp time calculation accuracy
+    - **Property 8: Clamp time calculation accuracy**
+    - **Validates: Requirements 9.2**
+    - Generate random MovementState where clamping occurs
+    - Verify `v₀ + a*t_clamp = max_speed` (within numerical tolerance)
+    - Run 100+ iterations
 
-- [ ]\* 4.4 Write property test for continuity at clamp point
-  - **Property 9: Smooth transition at velocity limit**
-  - **Validates: Requirements 9.3**
+  - [ ]\* 4.8 Write property test for smooth transition at velocity limit
+    - **Property 9: Smooth transition at velocity limit**
+    - **Validates: Requirements 9.3**
+    - Generate random MovementState where velocity reaches max_speed
+    - Verify position function is continuous at clamping point (no jumps)
+    - Run 100+ iterations
 
-- [ ] 5. Implement angular acceleration in predict_movement
-  - Implement angular velocity calculation: ω = ω₀ + αt
-  - Implement rotation calculation with angular acceleration: θ = θ₀ + ω₀t + ½αt²
-  - Handle case where angular acceleration is zero (use existing logic)
-  - _Requirements: 1.3, 1.4_
+  - [ ] 4.9 Implement angular velocity clamping during prediction
+    - In `solarance-shared/src/physics.rs::predict_movement()`, check if predicted angular velocity exceeds max_turn_rate
+    - If clamped: calculate exact time `t_clamp_angular = (max_turn_rate - ω_initial) / angular_acceleration`
+    - Apply angular acceleration until t_clamp_angular, then constant angular velocity for remaining time
+    - Rotation: `θ = θ₀ + ω₀*t_clamp + 0.5*α*t_clamp² + max_turn_rate*(dt - t_clamp)`
+    - _Requirements: 1.6, 6.2, 6.4_
 
-- [ ]\* 5.1 Write unit tests for angular acceleration
-  - Test ship rotating with angular acceleration
-  - Test zero angular acceleration produces same results as before
-  - _Requirements: 1.3, 1.4_
+  - [ ]\* 4.10 Write property test for angular velocity clamping
+    - **Property 4: Angular velocity clamping**
+    - **Validates: Requirements 1.6, 6.4**
+    - Generate random MovementState where predicted angular velocity would exceed max_turn_rate
+    - Verify angular velocity is clamped to max_turn_rate
+    - Verify rotation uses piecewise motion
+    - Run 100+ iterations
 
-- [ ]\* 5.2 Write property test for angular kinematic equations
-  - **Property 2: Angular acceleration kinematic equations**
-  - **Validates: Requirements 1.3, 1.4**
+  - [ ] 4.11 Implement combined acceleration and turning
+    - In `solarance-shared/src/physics.rs::predict_movement()`, handle case where both accelerations are non-zero
+    - Use numerical integration (small fixed-step Euler or RK4) to approximate arc motion with changing speed
+    - Handle velocity clamping during numerical integration
+    - _Requirements: 1.7_
 
-- [ ] 6. Implement angular velocity clamping in predict_movement
-  - Use `max_turn_rate` from MovementState (already denormalized in Task 1) — no signature change needed
-  - Calculate time when angular velocity reaches max_turn_rate
-  - Implement piecewise rotation calculation
-  - Clamp final angular velocity to max_turn_rate
-  - _Requirements: 1.6, 6.2, 6.4_
+  - [ ]\* 4.12 Write property test for combined acceleration and turning
+    - **Property 5: Combined acceleration and turning**
+    - **Validates: Requirements 1.7**
+    - Generate random MovementState with both non-zero accelerations
+    - Verify trajectory is curved (not straight line)
+    - Verify both speed and heading change over time
+    - Run 100+ iterations
 
-- [ ]\* 6.1 Write unit tests for angular velocity clamping
-  - Test angular velocity clamped to max_turn_rate
-  - Test rotation calculation with clamping
-  - _Requirements: 1.6, 6.4_
+  - [ ]\* 4.13 Write property test for backward compatibility
+    - **Property 6: Backward compatibility with zero acceleration**
+    - **Validates: Requirements 7.1**
+    - Generate random MovementState with acceleration = 0 and angular_acceleration = 0
+    - Compare results with original predict_movement logic
+    - Verify identical position and rotation
+    - Run 100+ iterations
 
-- [ ]\* 6.2 Write property test for angular velocity clamping
-  - **Property 4: Angular velocity clamping**
-  - **Validates: Requirements 1.6, 6.4**
+  - [ ]\* 4.14 Write property test for deterministic prediction
+    - **Property 7: Deterministic prediction**
+    - **Validates: Requirements 8.5**
+    - Generate random MovementState and timestamp
+    - Call predict_movement multiple times with same inputs
+    - Verify identical results every time
+    - Run 100+ iterations
 
-- [ ] 7. Implement combined acceleration and turning
-  - Handle case where both acceleration and angular_acceleration are non-zero
-  - Implement arc motion with changing speed (may use numerical integration)
-  - Ensure smooth trajectory when both accelerations are active
-  - _Requirements: 1.7_
+- [ ] 5. Checkpoint - Ensure physics tests pass
+  - Ensure all physics property tests pass, ask the user if questions arise.
 
-- [ ]\* 7.1 Write unit tests for combined motion
-  - Test ship accelerating while turning produces curved path
-  - Test position changes correctly with both accelerations
-  - _Requirements: 1.7_
+- [ ] 6. Implement set_thrust_input reducer
+  - [ ] 6.1 Create set_thrust_input reducer
+    - Add `#[reducer] pub fn set_thrust_input(ctx: &ReducerContext, is_thrusting: bool) -> Result<(), String>` in `spacetimedb/src/lib.rs`
+    - Find player's ship or return error
+    - Check if `ship.input_state.is_thrusting == is_thrusting`, if so return early (no update needed)
+    - Get ship configuration for max_acceleration and max_speed
+    - Predict current position and velocity using `predict_movement()`
+    - Calculate new acceleration:
+      - If `is_thrusting`: set `acceleration = max_acceleration` (applied in direction of current rotation)
+      - Else: set `acceleration = 0` (ship coasts at current velocity)
+    - Update SpaceShip:
+      - `input_state.is_thrusting = is_thrusting`
+      - `movement.pos = predicted_pos`
+      - `movement.velocity = predicted_velocity` (clamped to max_speed)
+      - `movement.acceleration = new_acceleration`
+      - `movement.last_update_time = current_time`
+    - Update database
+    - _Requirements: 3.1, 3.2, 3.6, 3.7, 3.8_
 
-- [ ]\* 7.2 Write property test for combined acceleration and turning
-  - **Property 5: Combined acceleration and turning**
-  - **Validates: Requirements 1.7**
+  - [ ]\* 6.2 Write unit test for set_thrust_input logic
+    - Extract acceleration calculation logic into testable helper function in `solarance-shared`
+    - Test that `is_thrusting=true` sets acceleration to max_acceleration
+    - Test that `is_thrusting=false` sets acceleration to 0 and preserves velocity
+    - Test that acceleration is applied in direction of current rotation
+    - _Requirements: 3.1, 3.2_
 
-- [ ] 8. Checkpoint - Ensure physics tests pass
-  - Run all unit tests and property tests for physics module
-  - Verify predict_movement handles all cases correctly
-  - Ask the user if questions arise
+- [ ] 7. Implement set_turn_input reducer
+  - [ ] 7.1 Create set_turn_input reducer
+    - Add `#[reducer] pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), String>` in `spacetimedb/src/lib.rs`
+    - Validate `turn_direction` is -1, 0, or 1, else return error
+    - Find player's ship or return error
+    - Check if `ship.input_state.turn_direction == turn_direction`, if so return early
+    - Get ship configuration for max_angular_acceleration and max_turn_rate
+    - Predict current position and rotation using `predict_movement()`
+    - Calculate new angular acceleration:
+      - If `turn_direction == 1`: set `angular_acceleration = max_angular_acceleration`
+      - If `turn_direction == -1`: set `angular_acceleration = -max_angular_acceleration`
+      - If `turn_direction == 0`: set `angular_acceleration = 0`
+    - Update SpaceShip:
+      - `input_state.turn_direction = turn_direction`
+      - `movement.pos = predicted_pos`
+      - `movement.rotation = predicted_rotation`
+      - `movement.angular_velocity = predicted_angular_velocity` (clamped to max_turn_rate)
+      - `movement.angular_acceleration = new_angular_acceleration`
+      - `movement.last_update_time = current_time`
+    - Update database
+    - _Requirements: 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
-- [ ]\* 8.1 Write property test for backward compatibility
-  - **Property 6: Backward compatibility with zero acceleration**
-  - **Validates: Requirements 7.1**
+  - [ ]\* 7.2 Write unit test for set_turn_input logic
+    - Extract angular acceleration calculation logic into testable helper function in `solarance-shared`
+    - Test that `turn_direction=1` sets angular_acceleration to max_angular_acceleration
+    - Test that `turn_direction=-1` sets angular_acceleration to -max_angular_acceleration
+    - Test that `turn_direction=0` sets angular_acceleration to 0
+    - Test that invalid turn_direction values are rejected
+    - _Requirements: 3.3, 3.4, 3.5_
 
-- [ ]\* 8.2 Write property test for deterministic prediction
-  - **Property 7: Deterministic prediction**
-  - **Validates: Requirements 8.5**
+- [ ] 8. Update client input handling
+  - [ ] 8.1 Modify handle_input to track input state changes
+    - In `src/main.rs::handle_input()`, replace velocity-based logic with input state tracking
+    - Track previous input state (use static variable or add to GameState)
+    - Determine current input state from keyboard:
+      - `is_thrusting = is_key_down(W) || is_key_down(Up)`
+      - `turn_direction = if is_key_down(D) { 1 } else if is_key_down(A) { -1 } else { 0 }`
+    - Compare with previous state:
+      - If `is_thrusting` changed: call `ctx.reducers().set_thrust_input(is_thrusting)`
+      - If `turn_direction` changed: call `ctx.reducers().set_turn_input(turn_direction)`
+    - Update previous state
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7_
 
-- [ ] 9. Update existing server reducers for backward compatibility
-  - Update `set_forward_thrust` and `set_turn_velocity` reducers to set acceleration fields to zero (maintain backward compatibility)
-  - Ensure old reducers populate `max_speed` and `max_turn_rate` in MovementState from ShipConfig when updating
-  - _Requirements: 7.2_
+  - [ ]\* 8.2 Write unit test for no redundant reducer calls
+    - **Property 15: No redundant reducer calls**
+    - **Validates: Requirements 10.6, 10.7**
+    - Simulate sequence of frames where keyboard input remains unchanged
+    - Verify at most one reducer call per input state change
+    - Verify no calls when state is stable
+    - Run 100+ iterations with random input sequences
 
-- [ ] 10. Implement set_thrust_input reducer
-  - Create `set_thrust_input(ctx: &ReducerContext, is_thrusting: bool)` reducer in `spacetimedb/src/lib.rs`
-  - Check if `ship.input_state.is_thrusting == is_thrusting` — return early if unchanged (Req 3.8, 10.8)
-  - Get player's ship and ship config
-  - Predict current position and velocity using predict_movement
-  - Set acceleration based on is_thrusting: max_acceleration in direction of current rotation if true, 0 if false (ship coasts at current velocity)
-  - Update SpaceShip: set `input_state.is_thrusting`, update `movement` fields (pos, velocity, acceleration, last_update_time)
-  - Update database
-  - _Requirements: 3.1, 3.2, 3.6, 3.7, 3.8, 10.8_
+- [ ] 9. Update on_connect to initialize new fields
+  - [ ] 9.1 Initialize MovementState with acceleration fields
+    - In `spacetimedb/src/lib.rs::on_connect()`, update MovementState initialization
+    - Set `acceleration: 0.0` and `angular_acceleration: 0.0`
+    - Copy `max_speed` and `max_turn_rate` from ShipConfig to MovementState
+    - _Requirements: 5.3_
 
-- [ ]\* 10.1 Extract and test thrust acceleration logic in shared crate
-  - Extract the pure computation ("given is_thrusting, max_acceleration, and current rotation → compute new acceleration value") into a testable function in `solarance-shared`
-  - Test is_thrusting=true sets acceleration to max_acceleration in direction of rotation
-  - Test is_thrusting=false sets acceleration to zero and preserves velocity (coasting)
-  - Note: SpacetimeDB module (`cdylib`) cannot run `cargo test` — all testable logic must live in the shared crate
-  - _Requirements: 3.1, 3.2_
+- [ ] 10. Checkpoint - Integration testing
+  - Ensure all tests pass, ask the user if questions arise.
+  - Manually test in-game:
+    - Press W key, verify ship accelerates smoothly
+    - Release W key, verify ship coasts at current speed
+    - Press A/D keys, verify ship turns with angular acceleration
+    - Verify velocity caps at max_speed
+    - Verify no redundant database updates when holding keys
 
-- [ ]\* 10.2 Write property test for thrust input (in shared crate)
-  - **Property 11: Thrust input sets acceleration in direction of rotation**
-  - Implemented as a pure function test in `solarance-shared` using extracted helper
-  - **Validates: Requirements 3.1, 3.2**
-
-- [ ]\* 10.3 Integration test for state synchronization (requires running SpacetimeDB)
-  - **Property 13: Reducer synchronizes state before update**
-  - Must be tested against a live SpacetimeDB instance — cannot be a `cargo test`
-  - **Validates: Requirements 3.6**
-
-- [ ]\* 10.4 Integration test for idempotent updates (requires running SpacetimeDB)
-  - **Property 14: Idempotent input updates**
-  - Must be tested against a live SpacetimeDB instance — cannot be a `cargo test`
-  - **Validates: Requirements 3.8, 10.8**
-
-- [ ] 11. Implement set_turn_input reducer
-  - Create `set_turn_input(ctx: &ReducerContext, turn_direction: i8)` reducer in `spacetimedb/src/lib.rs`
-  - Validate turn_direction is -1, 0, or 1
-  - Check if `ship.input_state.turn_direction == turn_direction` — return early if unchanged (Req 3.8, 10.8)
-  - Get player's ship and ship config
-  - Predict current position and rotation using predict_movement
-  - Set angular_acceleration based on turn_direction
-  - Update SpaceShip: set `input_state.turn_direction`, update `movement` fields (pos, rotation, angular_velocity, angular_acceleration, last_update_time)
-  - Update database
-  - _Requirements: 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 10.8_
-
-- [ ]\* 11.1 Extract and test turn acceleration logic in shared crate
-  - Extract the pure computation ("given turn_direction and max_angular_acceleration → compute new angular acceleration value") into a testable function in `solarance-shared`
-  - Test turn_direction=1 sets angular_acceleration to max_angular_acceleration
-  - Test turn_direction=-1 sets angular_acceleration to negative max_angular_acceleration
-  - Test turn_direction=0 sets angular_acceleration to zero
-  - Test invalid turn_direction returns error
-  - Note: SpacetimeDB module (`cdylib`) cannot run `cargo test` — all testable logic must live in the shared crate
-  - _Requirements: 3.3, 3.4, 3.5_
-
-- [ ]\* 11.2 Write property test for turn input (in shared crate)
-  - **Property 12: Turn input sets angular acceleration**
-  - Implemented as a pure function test in `solarance-shared` using extracted helper
-  - **Validates: Requirements 3.3, 3.4, 3.5**
-
-- [ ] 12. Update client_connected reducer to initialize input state
-  - Note: InputState initialization was partially handled in Task 1b (on_connect sets is_thrusting=false, turn_direction=0)
-  - Ensure all MovementState acceleration fields are initialized to zero
-  - Ensure max_speed and max_turn_rate are copied from ShipConfig into MovementState
-  - _Requirements: 5.3_
-
-- [ ]\* 12.1 Verify client connection initialization (manual or integration test)
-  - Verify new ships have input_state.is_thrusting=false and input_state.turn_direction=0
-  - Verify all acceleration fields are zero
-  - Verify max_speed and max_turn_rate in MovementState match ShipConfig values
-  - Note: Must be verified via integration test against running SpacetimeDB, not `cargo test`
-  - _Requirements: 5.3_
-
-- [ ] 13. Checkpoint - Verify server reducer behavior
-  - Run shared crate unit tests and property tests (`cargo test` in `solarance-shared`)
-  - Manually test reducers against running SpacetimeDB instance (cdylib cannot run `cargo test`)
-  - Verify reducers update database correctly
-  - Verify backward compatibility with old reducers
-  - Ask the user if questions arise
-
-- [ ] 14. Update client input handling in main.rs
-  - Add static variables or game state fields to track previous input state
-  - Modify `handle_input` function to detect input state changes
-  - Replace velocity calculations with boolean thrust state: is_thrusting = is_key_down(W) || is_key_down(Up)
-  - Replace angular velocity calculations with turn direction: turn_direction = if is_key_down(D) { 1 } else if is_key_down(A) { -1 } else { 0 }
-  - Call set_thrust_input only when is_thrusting changes
-  - Call set_turn_input only when turn_direction changes
-  - Update previous state after sending reducer calls
-  - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
-
-- [ ]\* 14.1 Write unit tests for client input handling
-  - Test thrust key press calls set_thrust_input(true)
-  - Test thrust key release calls set_thrust_input(false)
-  - Test turn keys call set_turn_input with correct direction
-  - Test no reducer calls when input unchanged
-  - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
-
-- [ ]\* 14.2 Write property test for no redundant calls
-  - **Property 15: No redundant reducer calls**
-  - **Validates: Requirements 10.6, 10.7**
-
-- [ ] 15. Update client ship rendering to use new MovementState fields
-  - Verify ShipManager correctly converts new MovementState fields (including acceleration, max_speed, max_turn_rate)
-  - `predict_movement` already receives max_speed/max_turn_rate via MovementState — verify conversion includes these fields
-  - Update any debug rendering to show acceleration values
-  - _Requirements: 8.2_
-
-- [ ] 16. Integration testing and validation
-  - Test full flow: key press → reducer call → database update → client prediction → rendering
-  - Test multiple ships with different acceleration values
-  - Test switching between old and new input systems
-  - Verify no visual glitches or discontinuities
-  - Verify network traffic is minimal (only on input changes)
-  - _Requirements: 7.4, 8.5_
-
-- [ ]\* 16.1 Write integration tests
-  - Test old and new reducers can be called on same ship
-  - Test client can switch between velocity-based and acceleration-based input
-  - _Requirements: 7.4_
-
-- [ ] 17. Final checkpoint - Ensure all tests pass
-  - Run complete test suite (unit tests + property tests)
-  - Verify all 15 correctness properties are tested
-  - Verify backward compatibility with existing system
-  - Ask the user if questions arise
+- [ ] 11. Clean up old reducers (optional migration step)
+  - [ ] 11.1 Mark old reducers as deprecated
+    - Add deprecation comments to `set_forward_thrust` and `set_turn_velocity`
+    - Document that new code should use `set_thrust_input` and `set_turn_input`
+    - Keep old reducers functional for backward compatibility during transition
+    - _Requirements: 7.2, 7.3, 7.4_
 
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for faster MVP
 - Each task references specific requirements for traceability
-- Property tests validate universal correctness properties with minimum 100 iterations
+- Checkpoints ensure incremental validation
+- Property tests validate universal correctness properties (minimum 100 iterations each)
 - Unit tests validate specific examples and edge cases
-- Checkpoints ensure incremental validation at key milestones
-- The implementation maintains backward compatibility throughout the transition
+- SpacetimeDB module cannot run `cargo test` (cdylib), so extract testable logic to `solarance-shared` crate
+- Old reducers (set_forward_thrust, set_turn_velocity) remain functional during transition

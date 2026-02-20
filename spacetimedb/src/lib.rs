@@ -9,8 +9,10 @@ use physics::*;
 pub struct ShipConfig {
     #[primary_key]
     pub ship_config_id: u32,
-    pub max_speed: f32,     // meters per second
-    pub max_turn_rate: f32, // degrees per second
+    pub max_speed: f32,                // meters per second
+    pub max_turn_rate: f32,            // degrees per second
+    pub max_acceleration: f32,         // meters per second²
+    pub max_angular_acceleration: f32, // degrees per second²
 }
 
 #[table(name = space_ship, public)]
@@ -28,6 +30,8 @@ pub fn init(ctx: &ReducerContext) {
         ship_config_id: 1,
         max_speed: 50.0,
         max_turn_rate: 45.0,
+        max_acceleration: 100.0,
+        max_angular_acceleration: 180.0,
     });
 }
 
@@ -44,6 +48,10 @@ pub fn on_connect(ctx: &ReducerContext) {
                 rotation: 0.0,
                 angular_velocity: 0.0,
                 last_update_time: ctx.timestamp().to_micros_since_unix_epoch(),
+                acceleration: 0.0,
+                angular_acceleration: 0.0,
+                max_speed: 50.0,
+                max_turn_rate: 45.0,
             },
         });
     }
@@ -87,6 +95,10 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
         rotation: current_rot,
         angular_velocity: space_ship.movement.angular_velocity,
         last_update_time: ctx.timestamp.to_micros_since_unix_epoch(),
+        acceleration: space_ship.movement.acceleration,
+        angular_acceleration: space_ship.movement.angular_acceleration,
+        max_speed: space_ship.movement.max_speed,
+        max_turn_rate: space_ship.movement.max_turn_rate,
     };
 
     // 4. Update Database
@@ -136,6 +148,10 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
         rotation: current_rot,
         angular_velocity: clamped_turn,
         last_update_time: ctx.timestamp.to_micros_since_unix_epoch(),
+        acceleration: space_ship.movement.acceleration,
+        angular_acceleration: space_ship.movement.angular_acceleration,
+        max_speed: space_ship.movement.max_speed,
+        max_turn_rate: space_ship.movement.max_turn_rate,
     };
 
     ctx.db.space_ship().entity_id().update(space_ship);

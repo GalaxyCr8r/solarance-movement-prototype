@@ -17,6 +17,14 @@ pub struct MovementState {
     pub angular_velocity: f32,
     /// Microseconds
     pub last_update_time: i64,
+    /// Pixels per second squared
+    pub acceleration: f32,
+    /// Degrees per second squared
+    pub angular_acceleration: f32,
+    /// Pixels per second (velocity cap)
+    pub max_speed: f32,
+    /// Degrees per second (angular velocity cap)
+    pub max_turn_rate: f32,
 }
 
 pub fn convert_to_movement_state(
@@ -31,6 +39,10 @@ pub fn convert_to_movement_state(
         rotation: state.rotation,
         angular_velocity: state.angular_velocity,
         last_update_time: state.last_update_time,
+        acceleration: state.acceleration,
+        angular_acceleration: state.angular_acceleration,
+        max_speed: state.max_speed,
+        max_turn_rate: state.max_turn_rate,
     }
 }
 
@@ -46,5 +58,9 @@ pub fn convert_from_movement_state(
         rotation: state.rotation,
         angular_velocity: state.angular_velocity,
         last_update_time: state.last_update_time,
+        acceleration: state.acceleration,
+        angular_acceleration: state.angular_acceleration,
+        max_speed: state.max_speed,
+        max_turn_rate: state.max_turn_rate,
     }
 }

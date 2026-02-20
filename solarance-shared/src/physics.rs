@@ -15,6 +15,14 @@ pub struct MovementState {
     pub angular_velocity: f32,
     /// Microseconds
     pub last_update_time: i64,
+    /// Pixels per second squared
+    pub acceleration: f32,
+    /// Degrees per second squared
+    pub angular_acceleration: f32,
+    /// Pixels per second (velocity cap)
+    pub max_speed: f32,
+    /// Degrees per second (angular velocity cap)
+    pub max_turn_rate: f32,
 }
 
 /// Shared logic to calculate the current position and rotation based on elapsed time.
@@ -100,6 +108,10 @@ mod tests {
             rotation,
             angular_velocity,
             last_update_time: time,
+            acceleration: 0.0,
+            angular_acceleration: 0.0,
+            max_speed: 500.0,
+            max_turn_rate: 180.0,
         }
     }
 
