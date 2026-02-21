@@ -19,10 +19,10 @@ fn convert_movement_state(state: &crate::module_bindings::MovementState) -> phys
         rotation: state.rotation,
         angular_velocity: state.angular_velocity,
         last_update_time: state.last_update_time,
-        acceleration: 0.0,
-        angular_acceleration: 0.0,
-        max_speed: 500.0,
-        max_turn_rate: 180.0,
+        acceleration: state.acceleration,
+        angular_acceleration: state.angular_acceleration,
+        max_speed: state.max_speed,
+        max_turn_rate: state.max_turn_rate,
     }
 }
 

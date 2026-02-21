@@ -220,8 +220,8 @@ Key changes:
     - Test that invalid turn_direction values are rejected
     - _Requirements: 3.3, 3.4, 3.5_
 
-- [ ] 8. Update client input handling
-  - [ ] 8.1 Modify handle_input to track input state changes
+- [x] 8. Update client input handling
+  - [x] 8.1 Modify handle_input to track input state changes
     - In `src/main.rs::handle_input()`, replace velocity-based logic with input state tracking
     - Track previous input state (use static variable or add to GameState)
     - Determine current input state from keyboard:
@@ -241,8 +241,8 @@ Key changes:
     - Verify no calls when state is stable
     - Run 100+ iterations with random input sequences
 
-- [ ] 9. Update on_connect to initialize new fields
-  - [ ] 9.1 Initialize MovementState with acceleration fields
+- [x] 9. Update on_connect to initialize new fields
+  - [x] 9.1 Initialize MovementState with acceleration fields
     - In `spacetimedb/src/lib.rs::on_connect()`, update MovementState initialization
     - Set `acceleration: 0.0` and `angular_acceleration: 0.0`
     - Copy `max_speed` and `max_turn_rate` from ShipConfig to MovementState

@@ -40,6 +40,14 @@ pub fn init(ctx: &ReducerContext) {
 pub fn on_connect(ctx: &ReducerContext) {
     // Spawn a ship for the player if they don't have one
     if ctx.db.space_ship().entity_id().find(&ctx.sender).is_none() {
+        // Get ship configuration to copy max_speed and max_turn_rate
+        let config = ctx
+            .db
+            .ship_config()
+            .ship_config_id()
+            .find(&1)
+            .expect("Default ship config not found");
+
         ctx.db.space_ship().insert(SpaceShip {
             entity_id: ctx.sender,
             ship_config_id: 1,
@@ -51,8 +59,8 @@ pub fn on_connect(ctx: &ReducerContext) {
                 last_update_time: ctx.timestamp().to_micros_since_unix_epoch(),
                 acceleration: 0.0,
                 angular_acceleration: 0.0,
-                max_speed: 50.0,
-                max_turn_rate: 45.0,
+                max_speed: config.max_speed,
+                max_turn_rate: config.max_turn_rate,
             },
             input_state: InputState {
                 is_thrusting: false,
