@@ -231,6 +231,10 @@ pub fn predict_movement(state: &MovementState, current_time: i64) -> (Vec2, f32)
             let alpha = state.angular_acceleration.to_radians();
 
             for _ in 0..INTEGRATION_STEPS {
+                // Update velocity and angular velocity
+                v += a * step_dt;
+                omega += alpha * step_dt;
+
                 // Clamp velocity if needed
                 if v > state.max_speed {
                     v = state.max_speed;
@@ -250,10 +254,6 @@ pub fn predict_movement(state: &MovementState, current_time: i64) -> (Vec2, f32)
                 // Update position based on current velocity and heading
                 x += theta.cos() * v * step_dt;
                 y += theta.sin() * v * step_dt;
-
-                // Update velocity and angular velocity
-                v += a * step_dt;
-                omega += alpha * step_dt;
 
                 // Update heading
                 theta += omega * step_dt;
