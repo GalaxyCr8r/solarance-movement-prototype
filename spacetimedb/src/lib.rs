@@ -29,8 +29,8 @@ pub fn init(ctx: &ReducerContext) {
     // Seed initial ship types
     ctx.db.ship_config().insert(ShipConfig {
         ship_config_id: 1,
-        max_speed: 50.0,
-        max_turn_rate: 45.0,
+        max_speed: 150.0,
+        max_turn_rate: 80.0,
         max_acceleration: 100.0,
         max_angular_acceleration: 180.0,
     });
@@ -64,6 +64,7 @@ pub fn on_connect(ctx: &ReducerContext) {
             },
             input_state: InputState {
                 is_thrusting: false,
+                is_breaking: false,
                 turn_direction: 0,
             },
         });
@@ -172,7 +173,11 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
 }
 
 #[reducer]
-pub fn set_thrust_input(ctx: &ReducerContext, is_thrusting: bool) -> Result<(), String> {
+pub fn set_thrust_input(
+    ctx: &ReducerContext,
+    is_thrusting: bool,
+    is_breaking: bool,
+) -> Result<(), String> {
     let mut space_ship = ctx
         .db
         .space_ship()
@@ -181,7 +186,19 @@ pub fn set_thrust_input(ctx: &ReducerContext, is_thrusting: bool) -> Result<(), 
         .ok_or("Ship not found")?;
 
     // Early return if input hasn't changed (Req 3.8)
-    if space_ship.input_state.is_thrusting == is_thrusting {
+    if is_thrusting {
+        if space_ship.input_state.is_thrusting == is_thrusting
+            && space_ship.input_state.is_breaking == false
+        {
+            return Ok(());
+        }
+    } else if is_breaking {
+        if space_ship.input_state.is_thrusting == false
+            && space_ship.input_state.is_breaking == is_breaking
+        {
+            return Ok(());
+        }
+    } else if space_ship.input_state.is_thrusting == space_ship.input_state.is_breaking {
         return Ok(());
     }
 
@@ -209,12 +226,15 @@ pub fn set_thrust_input(ctx: &ReducerContext, is_thrusting: bool) -> Result<(), 
     // 3. Calculate new acceleration based on thrust input
     let new_acceleration = if is_thrusting {
         config.max_acceleration
+    } else if is_breaking {
+        -config.max_acceleration
     } else {
         0.0 // Ship coasts at current velocity
     };
 
     // 4. Update input state and movement
     space_ship.input_state.is_thrusting = is_thrusting;
+    space_ship.input_state.is_breaking = if !is_thrusting { is_breaking } else { false };
     space_ship.movement = MovementState {
         pos: Vec2 {
             x: predicted_pos.x,

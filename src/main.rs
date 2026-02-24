@@ -108,6 +108,7 @@ async fn main() -> Result<(), macroquad::Error> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct InputState {
     is_thrusting: bool,
+    is_breaking: bool,
     turn_direction: i8,
 }
 
@@ -115,6 +116,7 @@ impl Default for InputState {
     fn default() -> Self {
         Self {
             is_thrusting: false,
+            is_breaking: false,
             turn_direction: 0,
         }
     }
@@ -138,6 +140,7 @@ fn handle_input(ctx: &DbConnection) {
 
     // Determine current input state from keyboard
     let is_thrusting = is_key_down(KeyCode::W) || is_key_down(KeyCode::Up);
+    let is_breaking = is_key_down(KeyCode::S) || is_key_down(KeyCode::Down);
     let turn_direction = if is_key_down(KeyCode::D) {
         1
     } else if is_key_down(KeyCode::A) {
@@ -148,6 +151,7 @@ fn handle_input(ctx: &DbConnection) {
 
     let current_input = InputState {
         is_thrusting,
+        is_breaking,
         turn_direction,
     };
 
@@ -155,8 +159,10 @@ fn handle_input(ctx: &DbConnection) {
     PREVIOUS_INPUT.with(|prev| {
         let mut prev_input = prev.borrow_mut();
 
-        if current_input.is_thrusting != prev_input.is_thrusting {
-            let _ = ctx.reducers().set_thrust_input(is_thrusting);
+        if current_input.is_thrusting != prev_input.is_thrusting
+            || current_input.is_breaking != prev_input.is_breaking
+        {
+            let _ = ctx.reducers().set_thrust_input(is_thrusting, is_breaking);
         }
 
         if current_input.turn_direction != prev_input.turn_direction {

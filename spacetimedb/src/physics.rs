@@ -9,6 +9,7 @@ pub struct Vec2 {
 #[derive(SpacetimeType, Clone, Copy, Debug)]
 pub struct InputState {
     pub is_thrusting: bool,
+    pub is_breaking: bool,
     pub turn_direction: i8,
 }
 
