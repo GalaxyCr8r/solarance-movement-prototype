@@ -195,36 +195,49 @@ fn calculate_accelerated_displacement(
 fn calculate_arc_position(state: &MovementState, dt: f32) -> Vec2 {
     if state.acceleration.abs() < f32::EPSILON && state.angular_acceleration.abs() < f32::EPSILON {
         // No acceleration: use analytical arc motion formula
-        let omega = state.angular_velocity.to_radians();
-        let theta0 = state.rotation.to_radians();
-        let theta1 = theta0 + omega * dt;
-        let r = state.velocity / omega;
-
-        Vec2 {
-            x: state.pos.x + r * (theta1.sin() - theta0.sin()),
-            y: state.pos.y - r * (theta1.cos() - theta0.cos()),
-        }
+        calculate_no_acceleration_arc_position(state, dt)
     } else {
         // Combined acceleration and turning: use numerical integration
         calculate_integrated_arc_position(state, dt)
     }
 }
 
+fn calculate_no_acceleration_arc_position(state: &MovementState, dt: f32) -> Vec2 {
+    let omega = state.angular_velocity.to_radians();
+    let theta0 = state.rotation.to_radians();
+    let theta1 = theta0 + omega * dt;
+    let r = state.velocity / omega;
+
+    Vec2 {
+        x: state.pos.x + r * (theta1.sin() - theta0.sin()),
+        y: state.pos.y - r * (theta1.cos() - theta0.cos()),
+    }
+}
+
 fn calculate_integrated_arc_position(state: &MovementState, dt: f32) -> Vec2 {
+    // Maximum time to integrate with acceleration (30 seconds should be enough to reach max velocity)
+    const MAX_INTEGRATION_TIME: f32 = 30.0;
     const INTEGRATION_STEPS: i32 = 20;
-    let step_dt = dt / INTEGRATION_STEPS as f32;
+
+    // Cap the integration time and calculate what remains
+    let integration_dt = dt.min(MAX_INTEGRATION_TIME);
+    let step_dt = integration_dt / INTEGRATION_STEPS as f32;
 
     let mut x = state.pos.x;
     let mut y = state.pos.y;
     let mut v = state.velocity;
     let mut theta = state.rotation.to_radians();
     let mut omega = state.angular_velocity.to_radians();
+    let mut time_integrated = 0.0;
 
     let a = state.acceleration;
     let alpha = state.angular_acceleration.to_radians();
     let max_omega = state.max_turn_rate.to_radians();
 
     for _ in 0..INTEGRATION_STEPS {
+        let prev_v = v;
+        let prev_omega = omega;
+
         // Update velocity and angular velocity based on acceleration
         v += a * step_dt;
         omega += alpha * step_dt;
@@ -243,10 +256,54 @@ fn calculate_integrated_arc_position(state: &MovementState, dt: f32) -> Vec2 {
             omega = -max_omega;
         }
 
-        // Now compute both position and heading based on safely bounded ranges
+        // Check if both velocity and angular velocity are clamped (no more acceleration)
+        let v_clamped =
+            (v == state.max_speed || v == 0.0) && (prev_v == v || a.abs() > f32::EPSILON);
+        let omega_clamped = (omega == max_omega || omega == -max_omega)
+            && (prev_omega == omega || alpha.abs() > f32::EPSILON);
+
+        if v_clamped && omega_clamped {
+            // Both are clamped - switch to analytical arc formula for remaining time
+            let remaining_dt = dt - time_integrated;
+
+            if omega.abs() < f32::EPSILON {
+                // Straight line motion for remaining time
+                x += theta.cos() * v * remaining_dt;
+                y += theta.sin() * v * remaining_dt;
+            } else {
+                // Analytical arc motion for remaining time
+                let theta1 = theta + omega * remaining_dt;
+                let r = v / omega;
+                x += r * (theta1.sin() - theta.sin());
+                y -= r * (theta1.cos() - theta.cos());
+            }
+
+            return Vec2 { x, y };
+        }
+
+        // Continue numerical integration
         x += theta.cos() * v * step_dt;
         y += theta.sin() * v * step_dt;
         theta += omega * step_dt;
+        time_integrated += step_dt;
+    }
+
+    // If we've integrated for MAX_INTEGRATION_TIME but there's still time remaining,
+    // use analytical formula for the rest (velocities should be at max by now)
+    if dt > MAX_INTEGRATION_TIME {
+        let remaining_dt = dt - MAX_INTEGRATION_TIME;
+
+        if omega.abs() < f32::EPSILON {
+            // Straight line motion for remaining time
+            x += theta.cos() * v * remaining_dt;
+            y += theta.sin() * v * remaining_dt;
+        } else {
+            // Analytical arc motion for remaining time
+            let theta1 = theta + omega * remaining_dt;
+            let r = v / omega;
+            x += r * (theta1.sin() - theta.sin());
+            y -= r * (theta1.cos() - theta.cos());
+        }
     }
 
     Vec2 { x, y }
