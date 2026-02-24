@@ -70,11 +70,12 @@ fn calculate_accelerated_rotation(
     dt: f32,
     unclamped_angular_velocity: f32,
 ) -> f32 {
-    if unclamped_angular_velocity > state.max_turn_rate && state.angular_acceleration > 0.0 {
-        calculate_clamped_rotation_positive(state, dt)
-    } else if unclamped_angular_velocity < -state.max_turn_rate && state.angular_acceleration < 0.0
-    {
-        calculate_clamped_rotation_negative(state, dt)
+    let should_be_clamped = unclamped_angular_velocity.abs() > state.max_turn_rate;
+    let has_the_same_signum =
+        state.angular_acceleration.signum() == unclamped_angular_velocity.signum();
+
+    if should_be_clamped && has_the_same_signum {
+        calculate_clamped_rotation(state, dt, unclamped_angular_velocity.signum())
     } else {
         // No clamping needed
         state.rotation
@@ -83,12 +84,12 @@ fn calculate_accelerated_rotation(
     }
 }
 
-fn calculate_clamped_rotation_positive(state: &MovementState, dt: f32) -> f32 {
-    let t_clamp = (state.max_turn_rate - state.angular_velocity) / state.angular_acceleration;
+fn calculate_clamped_rotation(state: &MovementState, dt: f32, sig: f32) -> f32 {
+    let t_clamp = (sig * state.max_turn_rate - state.angular_velocity) / state.angular_acceleration;
 
     if t_clamp <= 0.0 {
         // Already at or above max turn rate
-        state.rotation + state.max_turn_rate * dt
+        state.rotation + sig * state.max_turn_rate * dt
     } else if t_clamp >= dt {
         // Won't reach max turn rate in this time step
         state.rotation
@@ -98,27 +99,7 @@ fn calculate_clamped_rotation_positive(state: &MovementState, dt: f32) -> f32 {
         // Reaches max turn rate partway through
         let accel_rotation =
             state.angular_velocity * t_clamp + 0.5 * state.angular_acceleration * t_clamp * t_clamp;
-        let const_rotation = state.max_turn_rate * (dt - t_clamp);
-        state.rotation + accel_rotation + const_rotation
-    }
-}
-
-fn calculate_clamped_rotation_negative(state: &MovementState, dt: f32) -> f32 {
-    let t_clamp = (-state.max_turn_rate - state.angular_velocity) / state.angular_acceleration;
-
-    if t_clamp <= 0.0 {
-        // Already at or below negative max turn rate
-        state.rotation - state.max_turn_rate * dt
-    } else if t_clamp >= dt {
-        // Won't reach negative max turn rate in this time step
-        state.rotation
-            + (state.angular_velocity * dt)
-            + (0.5 * state.angular_acceleration * dt * dt)
-    } else {
-        // Reaches negative max turn rate partway through
-        let accel_rotation =
-            state.angular_velocity * t_clamp + 0.5 * state.angular_acceleration * t_clamp * t_clamp;
-        let const_rotation = -state.max_turn_rate * (dt - t_clamp);
+        let const_rotation = sig * state.max_turn_rate * (dt - t_clamp);
         state.rotation + accel_rotation + const_rotation
     }
 }
