@@ -1,45 +1,139 @@
+use macroquad::math::Vec2;
+use macroquad::prelude::{collections::storage, *};
+use macroquad::window::Conf;
+
+use spacetimedb_sdk::*;
+use std::result::Result;
+
+pub mod resources;
+use resources::Resources;
+
 mod module_bindings;
 use module_bindings::*;
-use std::env;
-use std::io::{self, Read};
+mod connection;
+mod gui_side_panel;
+mod render;
+mod ships;
+use ships::*;
 
-use spacetimedb_sdk::{DbContext, Table};
+pub struct GameState<'a> {
+    // Game-Wide States
+    pub done: bool,
+    pub ctx: &'a DbConnection,
 
-fn main() {
-    // The URI of the SpacetimeDB instance hosting our chat module.
-    let host: String = env::var("SPACETIMEDB_HOST").unwrap_or("http://localhost:3000".to_string());
+    // Display States
+    pub camera: Camera2D,
+    pub bg_camera: Camera2D,
+    // GUI States
+}
 
-    // The module name we chose when we published our module.
-    let db_name: String = env::var("SPACETIMEDB_DB_NAME").unwrap_or("my-db".to_string());
+/// Configures the game window properties including title, dimensions, and resizability
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "Solarance:Beginnings".to_owned(),
+        window_width: 1600,
+        window_height: 900,
+        window_resizable: false,
+        fullscreen: false,
+        ..Default::default()
+    }
+}
 
-    // Connect to the database
-    let conn = DbConnection::builder()
-        .with_module_name(db_name)
-        .with_uri(host)
-        .on_connect(|_, _, _| {
-            println!("Connected to SpacetimeDB");
-        })
-        .on_connect_error(|_ctx, e| {
-            eprintln!("Connection error: {:?}", e);
-            std::process::exit(1);
-        })
-        .build()
-        .expect("Failed to connect");
+#[egui_macroquad::macroquad::main(window_conf)]
+async fn main() -> Result<(), macroquad::Error> {
+    set_pc_assets_folder("assets");
 
-    conn.run_threaded();
+    let resources = Resources::new().await?;
+    storage::store(resources);
 
-    // Subscribe to the person table
-    conn.subscription_builder()
-        .on_applied(|_ctx| println!("Subscripted to the person table"))
-        .on_error(|_ctx, e| eprintln!("There was an error when subscring to the person table: {e}"))
-        .subscribe(["SELECT * FROM person"]);
+    clear_background(BLACK);
+    next_frame().await;
 
-    // Register a callback for when rows are inserted into the person table
-    conn.db().person().on_insert(|_ctx, person| {
-        println!("New person: {}", person.name);
-    });
+    let mut game_state = GameState {
+        done: false,
+        ctx: &connection::connect(),
+        camera: Camera2D::from_display_rect(Rect {
+            x: 0.0,
+            y: 0.0,
+            w: screen_width(),
+            h: screen_height(),
+        }),
+        bg_camera: Camera2D::from_display_rect(Rect {
+            x: 0.0,
+            y: 0.0,
+            w: screen_width(),
+            h: screen_height(),
+        }),
+    };
+    game_state.camera.zoom.y *= -1.0;
+    game_state.bg_camera.zoom.y *= -1.0;
 
-    println!("Press any key to exit...");
+    let ship_manager = ShipManager::new();
 
-    let _ = io::stdin().read(&mut [0u8]).unwrap();
+    let mut side_panel_rect = egui::Rect::ZERO;
+
+    loop {
+        ship_manager.sync_from_db(&game_state.ctx.db);
+        clear_background(BLACK);
+
+        // Focus camera on current target (usually the player's ship)
+        game_state.camera.target = Vec2::ZERO; //get_player_transform_vec2(&ctx, Vec2::ZERO);
+
+        // Offset camera to account for side panel
+        game_state.camera.target.x -= side_panel_rect.right() / 2.0;
+        set_camera(&game_state.camera);
+
+        // Render ships with synchronized server time
+        ship_manager.render();
+
+        egui_macroquad::ui(|egui_ctx| {
+            side_panel_rect = gui_side_panel::draw_side_panel_contents(egui_ctx);
+        });
+
+        egui_macroquad::draw();
+        next_frame().await;
+
+        handle_input(game_state.ctx);
+
+        if game_state.done {
+            let _ = game_state.ctx.disconnect();
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+/// Handles player input and calls the proper reducers if the controls have changed.
+fn handle_input(ctx: &DbConnection) {
+    let player_ship = {
+        match ctx.db.space_ship().entity_id().find(&ctx.identity()) {
+            Some(ship) => ship,
+            None => return,
+        }
+    };
+
+    let mut new_angular_velocity = player_ship.movement.angular_velocity;
+    let mut new_velocity = player_ship.movement.velocity;
+
+    if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
+        new_angular_velocity += 0.42;
+    }
+    if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
+        new_angular_velocity -= 0.42;
+    }
+    if is_key_down(KeyCode::Down) || is_key_down(KeyCode::S) {
+        new_velocity -= 1.337;
+    }
+    if is_key_down(KeyCode::Up) || is_key_down(KeyCode::W) {
+        new_velocity += 1.337;
+    }
+
+    if new_angular_velocity != player_ship.movement.angular_velocity {
+        let _ = ctx.reducers().set_turn_velocity(new_angular_velocity);
+    }
+
+    if new_velocity != player_ship.movement.velocity {
+        let _ = ctx.reducers().set_forward_thrust(new_velocity);
+    }
 }

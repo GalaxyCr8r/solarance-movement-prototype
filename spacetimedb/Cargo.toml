@@ -11,3 +11,5 @@ crate-type = ["cdylib"]
 [dependencies]
 spacetimedb = { version = "1.12.0" }
 log = "0.4"
+spacetimedsl = "0.15.0"
+solarance-shared = { path = "../solarance-shared" }
