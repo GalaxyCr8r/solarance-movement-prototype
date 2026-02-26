@@ -104,14 +104,6 @@ async fn main() -> Result<(), macroquad::Error> {
     Ok(())
 }
 
-/// Tracks the previous input state to avoid redundant reducer calls
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct InputState {
-    is_thrusting: bool,
-    is_breaking: bool,
-    turn_direction: i8,
-}
-
 impl Default for InputState {
     fn default() -> Self {
         Self {
@@ -141,9 +133,9 @@ fn handle_input(ctx: &DbConnection) {
     // Determine current input state from keyboard
     let is_thrusting = is_key_down(KeyCode::W) || is_key_down(KeyCode::Up);
     let is_breaking = is_key_down(KeyCode::S) || is_key_down(KeyCode::Down);
-    let turn_direction = if is_key_down(KeyCode::D) {
+    let turn_direction = if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
         1
-    } else if is_key_down(KeyCode::A) {
+    } else if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
         -1
     } else {
         0
