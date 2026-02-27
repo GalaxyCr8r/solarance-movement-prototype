@@ -104,36 +104,64 @@ async fn main() -> Result<(), macroquad::Error> {
     Ok(())
 }
 
+impl Default for InputState {
+    fn default() -> Self {
+        Self {
+            is_thrusting: false,
+            is_breaking: false,
+            turn_direction: 0,
+        }
+    }
+}
+
 /// Handles player input and calls the proper reducers if the controls have changed.
 fn handle_input(ctx: &DbConnection) {
-    let player_ship = {
+    use std::cell::RefCell;
+
+    // Track previous input state using a thread-local variable
+    thread_local! {
+        static PREVIOUS_INPUT: RefCell<InputState> = RefCell::new(InputState::default());
+    }
+
+    let _player_ship = {
         match ctx.db.space_ship().entity_id().find(&ctx.identity()) {
             Some(ship) => ship,
             None => return,
         }
     };
 
-    let mut new_angular_velocity = player_ship.movement.angular_velocity;
-    let mut new_velocity = player_ship.movement.velocity;
+    // Determine current input state from keyboard
+    let is_thrusting = is_key_down(KeyCode::W) || is_key_down(KeyCode::Up);
+    let is_breaking = is_key_down(KeyCode::S) || is_key_down(KeyCode::Down);
+    let turn_direction = if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
+        1
+    } else if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
+        -1
+    } else {
+        0
+    };
 
-    if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
-        new_angular_velocity += 0.42;
-    }
-    if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
-        new_angular_velocity -= 0.42;
-    }
-    if is_key_down(KeyCode::Down) || is_key_down(KeyCode::S) {
-        new_velocity -= 1.337;
-    }
-    if is_key_down(KeyCode::Up) || is_key_down(KeyCode::W) {
-        new_velocity += 1.337;
-    }
+    let current_input = InputState {
+        is_thrusting,
+        is_breaking,
+        turn_direction,
+    };
 
-    if new_angular_velocity != player_ship.movement.angular_velocity {
-        let _ = ctx.reducers().set_turn_velocity(new_angular_velocity);
-    }
+    // Compare with previous state and call reducers only if changed
+    PREVIOUS_INPUT.with(|prev| {
+        let mut prev_input = prev.borrow_mut();
 
-    if new_velocity != player_ship.movement.velocity {
-        let _ = ctx.reducers().set_forward_thrust(new_velocity);
-    }
+        if current_input.is_thrusting != prev_input.is_thrusting
+            || current_input.is_breaking != prev_input.is_breaking
+        {
+            let _ = ctx.reducers().set_thrust_input(is_thrusting, is_breaking);
+        }
+
+        if current_input.turn_direction != prev_input.turn_direction {
+            let _ = ctx.reducers().set_turn_input(turn_direction);
+        }
+
+        // Update previous state
+        *prev_input = current_input;
+    });
 }

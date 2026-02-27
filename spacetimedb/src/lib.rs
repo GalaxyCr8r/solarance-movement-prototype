@@ -9,8 +9,10 @@ use physics::*;
 pub struct ShipConfig {
     #[primary_key]
     pub ship_config_id: u32,
-    pub max_speed: f32,     // meters per second
-    pub max_turn_rate: f32, // degrees per second
+    pub max_speed: f32,                // meters per second
+    pub max_turn_rate: f32,            // degrees per second
+    pub max_acceleration: f32,         // meters per second²
+    pub max_angular_acceleration: f32, // degrees per second²
 }
 
 #[table(name = space_ship, public)]
@@ -19,6 +21,7 @@ pub struct SpaceShip {
     pub entity_id: Identity,
     pub ship_config_id: u32,
     pub movement: physics::MovementState,
+    pub input_state: physics::InputState,
 }
 
 #[reducer(init)]
@@ -26,8 +29,10 @@ pub fn init(ctx: &ReducerContext) {
     // Seed initial ship types
     ctx.db.ship_config().insert(ShipConfig {
         ship_config_id: 1,
-        max_speed: 50.0,
-        max_turn_rate: 45.0,
+        max_speed: 150.0,
+        max_turn_rate: 80.0,
+        max_acceleration: 100.0,
+        max_angular_acceleration: 180.0,
     });
 }
 
@@ -35,6 +40,14 @@ pub fn init(ctx: &ReducerContext) {
 pub fn on_connect(ctx: &ReducerContext) {
     // Spawn a ship for the player if they don't have one
     if ctx.db.space_ship().entity_id().find(&ctx.sender).is_none() {
+        // Get ship configuration to copy max_speed and max_turn_rate
+        let config = ctx
+            .db
+            .ship_config()
+            .ship_config_id()
+            .find(&1)
+            .expect("Default ship config not found");
+
         ctx.db.space_ship().insert(SpaceShip {
             entity_id: ctx.sender,
             ship_config_id: 1,
@@ -44,6 +57,15 @@ pub fn on_connect(ctx: &ReducerContext) {
                 rotation: 0.0,
                 angular_velocity: 0.0,
                 last_update_time: ctx.timestamp().to_micros_since_unix_epoch(),
+                acceleration: 0.0,
+                angular_acceleration: 0.0,
+                max_speed: config.max_speed,
+                max_turn_rate: config.max_turn_rate,
+            },
+            input_state: InputState {
+                is_thrusting: false,
+                is_breaking: false,
+                turn_direction: 0,
             },
         });
     }
@@ -78,14 +100,6 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
     );
 
     // 3. Update the movement state
-    // In Asteroids, thrust adds to the vector. In EV, it's often direct heading velocity.
-    // Here we calculate the new velocity vector based on current rotation.
-    // let dir = rotation_to_vector(current_rot);
-    // let new_velocity = Vec2 {
-    //     x: dir.x * clamped_speed,
-    //     y: dir.y * clamped_speed,
-    // };
-
     space_ship.movement = MovementState {
         pos: Vec2 {
             x: current_pos.x,
@@ -95,6 +109,10 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
         rotation: current_rot,
         angular_velocity: space_ship.movement.angular_velocity,
         last_update_time: ctx.timestamp.to_micros_since_unix_epoch(),
+        acceleration: space_ship.movement.acceleration,
+        angular_acceleration: space_ship.movement.angular_acceleration,
+        max_speed: space_ship.movement.max_speed,
+        max_turn_rate: space_ship.movement.max_turn_rate,
     };
 
     // 4. Update Database
@@ -144,6 +162,159 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
         rotation: current_rot,
         angular_velocity: clamped_turn,
         last_update_time: ctx.timestamp.to_micros_since_unix_epoch(),
+        acceleration: space_ship.movement.acceleration,
+        angular_acceleration: space_ship.movement.angular_acceleration,
+        max_speed: space_ship.movement.max_speed,
+        max_turn_rate: space_ship.movement.max_turn_rate,
+    };
+
+    ctx.db.space_ship().entity_id().update(space_ship);
+    Ok(())
+}
+
+#[reducer]
+pub fn set_thrust_input(
+    ctx: &ReducerContext,
+    is_thrusting: bool,
+    is_breaking: bool,
+) -> Result<(), String> {
+    let mut space_ship = ctx
+        .db
+        .space_ship()
+        .entity_id()
+        .find(&ctx.sender)
+        .ok_or("Ship not found")?;
+
+    // Early return if input hasn't changed (Req 3.8)
+    if is_thrusting {
+        if space_ship.input_state.is_thrusting == is_thrusting
+            && space_ship.input_state.is_breaking == false
+        {
+            return Ok(());
+        }
+    } else if is_breaking {
+        if space_ship.input_state.is_thrusting == false
+            && space_ship.input_state.is_breaking == is_breaking
+        {
+            return Ok(());
+        }
+    } else if space_ship.input_state.is_thrusting == space_ship.input_state.is_breaking {
+        return Ok(());
+    }
+
+    let config = ctx
+        .db
+        .ship_config()
+        .ship_config_id()
+        .find(&space_ship.ship_config_id)
+        .ok_or("Ship config not found")?;
+
+    let now = ctx.timestamp.to_micros_since_unix_epoch();
+    let dt = (now - space_ship.movement.last_update_time) as f32 / 1_000_000.0;
+
+    // 1. Predict current position and rotation
+    let (predicted_pos, predicted_rot) =
+        predict_movement(&convert_to_movement_state(&space_ship.movement), now);
+
+    // 2. Calculate predicted velocities: v = v₀ + a*dt, clamped
+    let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
+        .clamp(0.0, config.max_speed);
+    let predicted_angular_velocity = (space_ship.movement.angular_velocity
+        + space_ship.movement.angular_acceleration * dt)
+        .clamp(-config.max_turn_rate, config.max_turn_rate);
+
+    // 3. Calculate new acceleration based on thrust input
+    let new_acceleration = if is_thrusting {
+        config.max_acceleration
+    } else if is_breaking {
+        -config.max_acceleration
+    } else {
+        0.0 // Ship coasts at current velocity
+    };
+
+    // 4. Update input state and movement
+    space_ship.input_state.is_thrusting = is_thrusting;
+    space_ship.input_state.is_breaking = if !is_thrusting { is_breaking } else { false };
+    space_ship.movement = MovementState {
+        pos: Vec2 {
+            x: predicted_pos.x,
+            y: predicted_pos.y,
+        },
+        velocity: predicted_velocity,
+        rotation: predicted_rot,
+        angular_velocity: predicted_angular_velocity,
+        acceleration: new_acceleration,
+        angular_acceleration: space_ship.movement.angular_acceleration,
+        last_update_time: now,
+        max_speed: config.max_speed,
+        max_turn_rate: config.max_turn_rate,
+    };
+
+    ctx.db.space_ship().entity_id().update(space_ship);
+    Ok(())
+}
+
+#[reducer]
+pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), String> {
+    // Validate turn_direction
+    if turn_direction != -1 && turn_direction != 0 && turn_direction != 1 {
+        return Err(format!(
+            "Invalid turn_direction: {}. Must be -1, 0, or 1",
+            turn_direction
+        ));
+    }
+
+    let mut space_ship = ctx
+        .db
+        .space_ship()
+        .entity_id()
+        .find(&ctx.sender)
+        .ok_or("Ship not found")?;
+
+    // Early return if input hasn't changed (Req 3.8)
+    if space_ship.input_state.turn_direction == turn_direction {
+        return Ok(());
+    }
+
+    let config = ctx
+        .db
+        .ship_config()
+        .ship_config_id()
+        .find(&space_ship.ship_config_id)
+        .ok_or("Ship config not found")?;
+
+    let now = ctx.timestamp.to_micros_since_unix_epoch();
+    let dt = (now - space_ship.movement.last_update_time) as f32 / 1_000_000.0;
+
+    // 1. Predict current position and rotation
+    let (predicted_pos, predicted_rot) =
+        predict_movement(&convert_to_movement_state(&space_ship.movement), now);
+
+    // 2. Calculate predicted velocities: v = v₀ + a*dt, clamped
+    let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
+        .clamp(0.0, config.max_speed);
+    let predicted_angular_velocity = (space_ship.movement.angular_velocity
+        + space_ship.movement.angular_acceleration * dt)
+        .clamp(-config.max_turn_rate, config.max_turn_rate);
+
+    // 3. Calculate new angular acceleration based on turn direction
+    let new_angular_acceleration = turn_direction as f32 * config.max_angular_acceleration;
+
+    // 4. Update input state and movement
+    space_ship.input_state.turn_direction = turn_direction;
+    space_ship.movement = MovementState {
+        pos: Vec2 {
+            x: predicted_pos.x,
+            y: predicted_pos.y,
+        },
+        velocity: predicted_velocity,
+        rotation: predicted_rot,
+        angular_velocity: predicted_angular_velocity,
+        acceleration: space_ship.movement.acceleration,
+        angular_acceleration: new_angular_acceleration,
+        last_update_time: now,
+        max_speed: config.max_speed,
+        max_turn_rate: config.max_turn_rate,
     };
 
     ctx.db.space_ship().entity_id().update(space_ship);
