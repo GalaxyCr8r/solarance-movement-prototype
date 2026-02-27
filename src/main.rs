@@ -87,7 +87,7 @@ async fn main() -> Result<(), macroquad::Error> {
         ship_manager.render();
 
         egui_macroquad::ui(|egui_ctx| {
-            side_panel_rect = gui_side_panel::draw_side_panel_contents(egui_ctx);
+            side_panel_rect = gui_side_panel::draw_side_panel_contents(egui_ctx, &game_state.ctx);
         });
 
         egui_macroquad::draw();
@@ -123,12 +123,12 @@ fn handle_input(ctx: &DbConnection) {
         static PREVIOUS_INPUT: RefCell<InputState> = RefCell::new(InputState::default());
     }
 
-    let _player_ship = {
-        match ctx.db.space_ship().entity_id().find(&ctx.identity()) {
-            Some(ship) => ship,
-            None => return,
-        }
-    };
+    // let _player_ship = {
+    //     match ctx.db.space_ship().entity_id().find(&ctx.identity()) {
+    //         Some(ship) => ship,
+    //         None => return,
+    //     }
+    // };
 
     // Determine current input state from keyboard
     let is_thrusting = is_key_down(KeyCode::W) || is_key_down(KeyCode::Up);
@@ -154,11 +154,19 @@ fn handle_input(ctx: &DbConnection) {
         if current_input.is_thrusting != prev_input.is_thrusting
             || current_input.is_breaking != prev_input.is_breaking
         {
-            let _ = ctx.reducers().set_thrust_input(is_thrusting, is_breaking);
+            let result = ctx
+                .reducers()
+                .set_thrust_input(current_input.is_thrusting, current_input.is_breaking);
+            if let Err(e) = result {
+                println!("Error setting thrust input: {}", e);
+            }
         }
 
         if current_input.turn_direction != prev_input.turn_direction {
-            let _ = ctx.reducers().set_turn_input(turn_direction);
+            let result = ctx.reducers().set_turn_input(current_input.turn_direction);
+            if let Err(e) = result {
+                println!("Error setting turn input: {}", e);
+            }
         }
 
         // Update previous state

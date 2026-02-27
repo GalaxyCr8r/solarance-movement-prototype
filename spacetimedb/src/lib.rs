@@ -1,11 +1,31 @@
 use solarance_shared::physics::predict_movement;
-use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
-use spacetimedsl::Timestamp;
+use spacetimedb::*;
+use spacetimedsl::*;
 
 mod physics;
 use physics::*;
 
-#[table(name = ship_config, public)]
+#[derive(SpacetimeType, Clone, Debug, PartialEq)]
+pub enum VisitedStatus {
+    /// The player has not visited this system or sector.
+    Unvisited,
+    /// The player has observed this system or sector, either via intel report or sensors.
+    Observed,
+    /// The player has visited this system or sector.
+    Visited,
+}
+
+impl VisitedStatus {
+    fn is_visible(&self) -> bool {
+        match self {
+            VisitedStatus::Observed => true,
+            VisitedStatus::Visited => true,
+            _ => false,
+        }
+    }
+}
+
+#[table(accessor = ship_config, public)]
 pub struct ShipConfig {
     #[primary_key]
     pub ship_config_id: u32,
@@ -15,13 +35,146 @@ pub struct ShipConfig {
     pub max_angular_acceleration: f32, // degrees per second²
 }
 
-#[table(name = space_ship, public)]
+#[table(accessor = space_ship)]
 pub struct SpaceShip {
     #[primary_key]
     pub entity_id: Identity,
+    #[index(btree)]
+    pub sector_id: u64,
+
     pub ship_config_id: u32,
     pub movement: physics::MovementState,
     pub input_state: physics::InputState,
+}
+
+#[table(accessor = systems)]
+pub struct System {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u32,
+    pub name: String,
+}
+
+#[table(accessor = sectors,
+index( accessor = position, btree(columns=[x,y])))]
+pub struct Sector {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub system_id: u32,
+    pub x: i32,
+    pub y: i32,
+    /// If true, this sector contains a station/gate and is visible
+    /// to anyone who has visited the system.
+    pub is_public: bool,
+}
+
+/// Tracks where a player's ship is currently located.
+#[table(accessor = player_state)]
+pub struct PlayerState {
+    #[primary_key]
+    pub player_id: Identity,
+    pub current_system_id: u32,
+    pub current_sector_id: u64,
+}
+
+/// Private relationship table: Who has visited which system.
+#[table(accessor = visited_systems)]
+pub struct VisitedSystem {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub player_id: Identity,
+    pub system_id: u32,
+    pub visited_status: VisitedStatus,
+}
+
+/// Private relationship table: Who has visited which specific sector.
+#[table(accessor = visited_sectors)]
+pub struct VisitedSector {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub player_id: Identity,
+    pub sector_id: u64,
+    pub visited_status: VisitedStatus,
+}
+
+// --- Views ---
+
+/// View: Returns all ships in the player's current sector.
+#[view(accessor = my_player_state, public)]
+pub fn my_player_state(ctx: &ViewContext) -> Vec<PlayerState> {
+    match ctx.db.player_state().player_id().find(ctx.sender()) {
+        Some(p) => vec![p],
+        None => Vec::new(), // Player hasn't joined/initialized
+    }
+}
+
+/// View: Returns all ships in the player's current sector.
+#[view(accessor = current_sector_ships, public)]
+pub fn current_sector_ships(ctx: &ViewContext) -> Vec<SpaceShip> {
+    // 1. Get the player's current system ID
+    let player = match ctx.db.player_state().player_id().find(ctx.sender()) {
+        Some(p) => p,
+        None => return Vec::new(), // Player hasn't joined/initialized
+    };
+
+    let current_sector_id = player.current_sector_id;
+
+    // 2. Filter sectors in this system
+    ctx.db
+        .space_ship()
+        .sector_id()
+        .filter(current_sector_id)
+        .collect()
+}
+
+/// View: Returns all sectors in the player's current system that they are
+/// authorized to see (either because they visited them or they are public).
+#[view(accessor = current_system_visible_sectors, public)]
+pub fn current_system_visible_sectors(ctx: &ViewContext) -> Vec<Sector> {
+    // 1. Get the player's current system ID
+    let player = match ctx.db.player_state().player_id().find(ctx.sender()) {
+        Some(p) => p,
+        None => return Vec::new(), // Player hasn't joined/initialized
+    };
+
+    let current_sys_id = player.current_system_id;
+
+    // 2. Filter sectors in this system
+    ctx.db
+        .sectors()
+        .system_id()
+        .filter(current_sys_id)
+        .filter(|sector| {
+            // Logic: Visible if the sector is marked public...
+            if sector.is_public {
+                return true;
+            }
+            // ...OR if the player has a record in visited_sectors for this ID.
+            ctx.db
+                .visited_sectors()
+                .player_id()
+                .filter(ctx.sender())
+                .any(|v| v.sector_id == sector.id && v.visited_status.is_visible())
+        })
+        .collect()
+}
+
+/// View: Returns the full System details for every system the player has ever visited.
+#[view(accessor = my_visited_systems, public)]
+pub fn my_visited_systems(ctx: &ViewContext) -> Vec<System> {
+    ctx.db
+        .visited_systems()
+        .player_id()
+        .filter(ctx.sender())
+        .filter(|sys| sys.visited_status.is_visible())
+        .flat_map(|v| ctx.db.systems().id().find(v.system_id))
+        .collect()
 }
 
 #[reducer(init)]
@@ -37,9 +190,20 @@ pub fn init(ctx: &ReducerContext) {
 }
 
 #[reducer(client_connected)]
-pub fn on_connect(ctx: &ReducerContext) {
+pub fn on_connect(_ctx: &ReducerContext) {
+    //
+}
+
+#[reducer]
+pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
     // Spawn a ship for the player if they don't have one
-    if ctx.db.space_ship().entity_id().find(&ctx.sender).is_none() {
+    if ctx
+        .db
+        .space_ship()
+        .entity_id()
+        .find(&ctx.sender())
+        .is_none()
+    {
         // Get ship configuration to copy max_speed and max_turn_rate
         let config = ctx
             .db
@@ -48,15 +212,16 @@ pub fn on_connect(ctx: &ReducerContext) {
             .find(&1)
             .expect("Default ship config not found");
 
-        ctx.db.space_ship().insert(SpaceShip {
-            entity_id: ctx.sender,
+        ctx.db.space_ship().try_insert(SpaceShip {
+            entity_id: ctx.sender(),
             ship_config_id: 1,
+            sector_id: 1,
             movement: MovementState {
                 pos: Vec2 { x: 0.0, y: 0.0 },
                 velocity: 0.0,
                 rotation: 0.0,
                 angular_velocity: 0.0,
-                last_update_time: ctx.timestamp().to_micros_since_unix_epoch(),
+                last_update_time: ctx.timestamp.to_micros_since_unix_epoch(),
                 acceleration: 0.0,
                 angular_acceleration: 0.0,
                 max_speed: config.max_speed,
@@ -67,8 +232,30 @@ pub fn on_connect(ctx: &ReducerContext) {
                 is_breaking: false,
                 turn_direction: 0,
             },
-        });
+        })?;
+
+        ctx.db.player_state().try_insert(PlayerState {
+            player_id: ctx.sender(),
+            current_system_id: 1,
+            current_sector_id: 1,
+        })?;
+
+        ctx.db.visited_sectors().try_insert(VisitedSector {
+            id: 0,
+            player_id: ctx.sender(),
+            sector_id: 1,
+            visited_status: VisitedStatus::Visited,
+        })?;
+
+        ctx.db.visited_systems().try_insert(VisitedSystem {
+            id: 0,
+            player_id: ctx.sender(),
+            system_id: 1,
+            visited_status: VisitedStatus::Visited,
+        })?;
     }
+
+    Ok(())
 }
 
 #[reducer]
@@ -77,7 +264,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
         .db
         .space_ship()
         .entity_id()
-        .find(&ctx.sender)
+        .find(&ctx.sender())
         .ok_or("Ship not found")?;
 
     let stats = ctx
@@ -126,7 +313,7 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
         .db
         .space_ship()
         .entity_id()
-        .find(&ctx.sender)
+        .find(&ctx.sender())
         .ok_or("Ship not found")?;
 
     let stats = ctx
@@ -182,7 +369,7 @@ pub fn set_thrust_input(
         .db
         .space_ship()
         .entity_id()
-        .find(&ctx.sender)
+        .find(&ctx.sender())
         .ok_or("Ship not found")?;
 
     // Early return if input hasn't changed (Req 3.8)
@@ -268,7 +455,7 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         .db
         .space_ship()
         .entity_id()
-        .find(&ctx.sender)
+        .find(&ctx.sender())
         .ok_or("Ship not found")?;
 
     // Early return if input hasn't changed (Req 3.8)

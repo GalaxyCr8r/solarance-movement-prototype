@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-spacetimedb-sdk = { version = "1.12.*" }
+spacetimedb-sdk = { version = "2.0.2" }
 solarance-shared = { path = "solarance-shared" }
 egui-macroquad = "0.17.3"
 macroquad = "0.4.14"

@@ -98,7 +98,7 @@ impl ShipManager {
 
         // Get current ships from database
         let db_ships: HashMap<Identity, ClientShip> = db
-            .space_ship()
+            .current_sector_ships()
             .iter()
             .map(|ship| {
                 (

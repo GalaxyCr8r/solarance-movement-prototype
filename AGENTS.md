@@ -18,7 +18,7 @@
 2. **Reducers must be deterministic** — no filesystem, network, timers, or random
 3. **Read data via tables/subscriptions** — not reducer return values
 4. **Auto-increment IDs are not sequential** — gaps are normal, don't use for ordering
-5. **`ctx.sender` is the authenticated principal** — never trust identity args
+5. **`ctx.sender()` is the authenticated principal** — never trust identity args
 
 ---
 
@@ -243,7 +243,7 @@ Vec<T>                       // Arrays
 // Insert and get the auto-generated ID
 let row = ctx.db.task().insert(Task {
     id: 0,  // Placeholder for auto_inc
-    owner_id: ctx.sender,
+    owner_id: ctx.sender(),
     title: "New task".to_string(),
     created_at: ctx.timestamp,
 });
@@ -321,7 +321,7 @@ pub fn create_task(ctx: &ReducerContext, title: String) {
     // Insert
     ctx.db.task().insert(Task {
         id: 0,
-        owner_id: ctx.sender,
+        owner_id: ctx.sender(),
         title,
         created_at: ctx.timestamp,
     });
@@ -333,7 +333,7 @@ pub fn update_task(ctx: &ReducerContext, task_id: u64, title: String) -> Result<
     let task = ctx.db.task().id().find(&task_id)
         .ok_or("Task not found")?;
 
-    if task.owner_id != ctx.sender {
+    if task.owner_id != ctx.sender() {
         return Err("Not authorized".to_string());
     }
 
@@ -352,8 +352,8 @@ pub fn init(ctx: &ReducerContext) {
 
 #[reducer(client_connected)]
 pub fn on_connect(ctx: &ReducerContext) {
-    // ctx.sender is the connecting client
-    log::info!("Client connected: {:?}", ctx.sender);
+    // ctx.sender() is the connecting client
+    log::info!("Client connected: {:?}", ctx.sender());
 }
 
 #[reducer(client_disconnected)]
@@ -365,7 +365,7 @@ pub fn on_disconnect(ctx: &ReducerContext) {
 ### ReducerContext fields
 
 ```rust
-ctx.sender          // Identity of the caller
+ctx.sender()          // Identity of the caller
 ctx.timestamp       // Current timestamp
 ctx.db              // Database access
 ctx.rng             // Deterministic RNG (use instead of rand)
@@ -505,7 +505,7 @@ pub struct SecretData { ... }
 ```rust
 // Use row-level security for per-user visibility
 #[table(name = player_data, public)]
-#[rls(filter = |ctx, row| row.owner_id == ctx.sender)]
+#[rls(filter = |ctx, row| row.owner_id == ctx.sender())]
 pub struct PlayerData {
     #[primary_key]
     pub id: u64,

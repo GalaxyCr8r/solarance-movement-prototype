@@ -7,6 +7,7 @@ tasks:
     desc: "Client: Generate Bindings"
     cmds:
       - spacetime generate --lang rust -p spacetimedb --out-dir src/module_bindings -y
+      # If/when we do an admin client, we will have to pass --include-private to this command
   
   publish:
     desc: "Publish to SpacetimeDB"
