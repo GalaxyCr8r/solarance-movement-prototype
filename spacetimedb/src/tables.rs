@@ -54,10 +54,9 @@ pub struct System {
 }
 
 #[table(accessor = sectors,
-index( accessor = position, btree(columns=[x,y])))]
+index(accessor = position, btree(columns=[x,y])))]
 pub struct Sector {
     #[primary_key]
-    #[auto_inc]
     pub id: u64,
     #[index(btree)]
     pub system_id: u32,
@@ -97,6 +96,7 @@ pub struct VisitedSector {
     pub id: u64,
     #[index(btree)]
     pub player_id: Identity,
+    #[index(btree)]
     pub sector_id: u64,
     pub visited_status: VisitedStatus,
 }

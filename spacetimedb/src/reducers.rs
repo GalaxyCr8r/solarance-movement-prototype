@@ -1,9 +1,8 @@
+use solarance_shared::physics::predict_movement;
 use spacetimedb::*;
 use spacetimedsl::*;
-use solarance_shared::physics::predict_movement;
 
 use crate::{physics::*, tables::*};
-
 
 #[reducer]
 pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
@@ -66,6 +65,62 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
         })?;
     }
 
+    Ok(())
+}
+
+#[reducer]
+pub fn travel_to_sector(ctx: &ReducerContext, sector_id: u64) -> Result<(), String> {
+    let mut space_ship = ctx
+        .db
+        .space_ship()
+        .entity_id()
+        .find(&ctx.sender())
+        .ok_or("Ship not found")?;
+
+    let mut player_state = ctx
+        .db
+        .player_state()
+        .player_id()
+        .find(&ctx.sender())
+        .ok_or("player_state not found")?;
+
+    let target_sector = ctx
+        .db
+        .sectors()
+        .id()
+        .find(&sector_id)
+        .ok_or("Sector not found")?;
+
+    let current_sector = ctx
+        .db
+        .sectors()
+        .id()
+        .find(&space_ship.sector_id)
+        .ok_or("Current sector not found")?;
+
+    if current_sector.system_id != target_sector.system_id {
+        return Err("Cannot travel between systems".to_string());
+    }
+
+    if !ctx
+        .db
+        .visited_sectors()
+        .player_id()
+        .filter(ctx.sender())
+        .any(|v| v.sector_id == sector_id)
+    {
+        ctx.db.visited_sectors().try_insert(VisitedSector {
+            id: 0,
+            player_id: ctx.sender(),
+            sector_id: sector_id,
+            visited_status: VisitedStatus::Visited,
+        })?;
+    }
+
+    space_ship.sector_id = sector_id;
+    player_state.current_sector_id = sector_id;
+    ctx.db.space_ship().entity_id().update(space_ship);
+    ctx.db.player_state().player_id().update(player_state);
     Ok(())
 }
 
