@@ -24,7 +24,8 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
 
         ctx.db.space_ship().try_insert(SpaceShip {
             entity_id: ctx.sender(),
-            ship_config_id: 1,
+            ship_config_id: config.ship_config_id,
+            health: config.max_health as f32,
             sector_id: 1,
             movement: MovementState {
                 pos: Vec2 { x: 0.0, y: 0.0 },

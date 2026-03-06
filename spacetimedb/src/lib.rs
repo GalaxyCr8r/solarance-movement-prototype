@@ -15,6 +15,7 @@ pub fn init(ctx: &ReducerContext) {
     // Seed initial ship types
     ctx.db.ship_config().insert(ShipConfig {
         ship_config_id: 1,
+        max_health: 100,
         max_speed: 150.0,
         max_turn_rate: 80.0,
         max_acceleration: 100.0,

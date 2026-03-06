@@ -27,6 +27,7 @@ impl VisitedStatus {
 pub struct ShipConfig {
     #[primary_key]
     pub ship_config_id: u32,
+    pub max_health: u16,
     pub max_speed: f32,                // meters per second
     pub max_turn_rate: f32,            // degrees per second
     pub max_acceleration: f32,         // meters per second²
@@ -41,9 +42,25 @@ pub struct SpaceShip {
     pub sector_id: u64,
 
     pub ship_config_id: u32,
+    pub health: f32,
     pub movement: physics::MovementState,
     pub input_state: physics::InputState,
 }
+
+/// Cargo crates can be picked up by players and
+// #[table(accessor = cargo_crate)]
+// pub struct CargoCrate {
+//     #[primary_key]
+//     #[auto_inc]
+//     pub id: u64,
+
+//     #[index(btree)]
+//     pub sector_id: u64,
+
+//     pub item_def_id: u32,
+//     pub item_amount: u32,
+//     pub movement: physics::MovementState,
+// }
 
 #[table(accessor = systems)]
 pub struct System {
