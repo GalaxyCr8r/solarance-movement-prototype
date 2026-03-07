@@ -117,3 +117,24 @@ pub struct VisitedSector {
     pub sector_id: u64,
     pub visited_status: VisitedStatus,
 }
+
+#[derive(SpacetimeType, Clone, Debug)]
+pub enum EventType {
+    Bullet,
+    Explosion,
+    Warpgate,
+}
+
+/// A short-lived event used to broadcast visual effects to players in a sector.
+#[table(accessor = damage_event, public, event)]
+pub struct DamageEvent {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub sector_id: u64,
+    pub event_type: EventType,
+    pub pos: physics::Vec2,
+    /// The timestamp when the event occurred (in microseconds).
+    pub timestamp: i64,
+}
