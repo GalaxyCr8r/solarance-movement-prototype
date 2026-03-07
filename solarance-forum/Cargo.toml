@@ -1,0 +1,8 @@
+[package]
+name = "solarance-forum"
+version = "0.1.0"
+edition = "2024"
+description = "A SpacetimeDB module providing forum capabilities and basic moderation tools."
+
+[dependencies]
+spacetimedb = "2.0.2"
