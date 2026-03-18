@@ -8,7 +8,7 @@ use crate::tables::*;
 /// View: Returns all ships in the player's current sector.
 #[view(accessor = my_player_state, public)]
 pub fn my_player_state(ctx: &ViewContext) -> Vec<PlayerState> {
-    match ctx.db.player_state().player_id().find(ctx.sender()) {
+    match ctx.db.player_state().id().find(ctx.sender()) {
         Some(p) => vec![p],
         None => Vec::new(), // Player hasn't joined/initialized
     }
@@ -17,19 +17,18 @@ pub fn my_player_state(ctx: &ViewContext) -> Vec<PlayerState> {
 /// View: Returns all ships in the player's current sector.
 #[view(accessor = current_sector_ships, public)]
 pub fn current_sector_ships(ctx: &ViewContext) -> Vec<SpaceShip> {
+    let dsl = spacetimedsl::read_only_dsl(ctx);
+
     // 1. Get the player's current system ID
-    let player = match ctx.db.player_state().player_id().find(ctx.sender()) {
-        Some(p) => p,
-        None => return Vec::new(), // Player hasn't joined/initialized
+    let player = match dsl.get_player_state_by_id(PlayerStateId::new(ctx.sender())) {
+        Ok(p) => p,
+        Err(_) => return Vec::new(), // Player hasn't joined/initialized
     };
 
-    let current_sector_id = player.current_sector_id;
+    let current_sector_id = SectorId::new(*player.get_current_sector_id());
 
     // 2. Filter sectors in this system
-    ctx.db
-        .space_ship()
-        .sector_id()
-        .filter(current_sector_id)
+    dsl.get_space_ships_by_sector_id(current_sector_id)
         .collect()
 }
 
@@ -37,30 +36,26 @@ pub fn current_sector_ships(ctx: &ViewContext) -> Vec<SpaceShip> {
 /// authorized to see (either because they visited them or they are public).
 #[view(accessor = current_system_visible_sectors, public)]
 pub fn current_system_visible_sectors(ctx: &ViewContext) -> Vec<Sector> {
+    let dsl = spacetimedsl::read_only_dsl(ctx);
+
     // 1. Get the player's current system ID
-    let player = match ctx.db.player_state().player_id().find(ctx.sender()) {
-        Some(p) => p,
-        None => return Vec::new(), // Player hasn't joined/initialized
+    let player = match dsl.get_player_state_by_id(PlayerStateId::new(ctx.sender())) {
+        Ok(p) => p,
+        Err(_) => return Vec::new(), // Player hasn't joined/initialized
     };
 
-    let current_sys_id = player.current_system_id;
+    let current_sys_id = SystemId::new(*player.get_current_system_id());
 
     // 2. Filter sectors in this system
-    ctx.db
-        .sectors()
-        .system_id()
-        .filter(current_sys_id)
+    dsl.get_sectors_by_system_id(current_sys_id)
         .filter(|sector| {
             // Logic: Visible if the sector is marked public...
-            if sector.is_public {
+            if *sector.get_is_public() {
                 return true;
             }
             // ...OR if the player has a record in visited_sectors for this ID.
-            ctx.db
-                .visited_sectors()
-                .player_id()
-                .filter(ctx.sender())
-                .any(|v| v.sector_id == sector.id && v.visited_status.is_visible())
+            dsl.get_visited_sectors_by_player_id(&ctx.sender())
+                .any(|v| *v.get_sector_id() == sector.id && v.get_visited_status().is_visible())
         })
         .collect()
 }
@@ -68,11 +63,16 @@ pub fn current_system_visible_sectors(ctx: &ViewContext) -> Vec<Sector> {
 /// View: Returns the full System details for every system the player has ever visited.
 #[view(accessor = my_visited_systems, public)]
 pub fn my_visited_systems(ctx: &ViewContext) -> Vec<System> {
-    ctx.db
-        .visited_systems()
-        .player_id()
-        .filter(ctx.sender())
-        .filter(|sys| sys.visited_status.is_visible())
-        .flat_map(|v| ctx.db.systems().id().find(v.system_id))
+    let dsl = spacetimedsl::read_only_dsl(ctx);
+    dsl.get_visited_systems_by_player_id(&ctx.sender())
+        .filter(|sys| sys.get_visited_status().is_visible())
+        .flat_map(|v| dsl.get_system_by_id(SystemId::new(*v.get_system_id())))
         .collect()
+    // ctx.db
+    //     .visited_system()
+    //     .player_id()
+    //     .filter(ctx.sender())
+    //     .filter(|sys| sys.get_visited_status().is_visible())
+    //     .flat_map(|v| ctx.db.system().id().find(v.system_id))
+    //     .collect()
 }
