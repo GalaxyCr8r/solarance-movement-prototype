@@ -33,7 +33,7 @@ pub fn current_system_visible_sectors(ctx: &ViewContext) -> impl Query<Sector> {
     // 1. Get the player's current system ID
     let player = match dsl.get_player_state_by_id(PlayerStateId::new(ctx.sender())) {
         Ok(p) => p,
-        Err(_) => return ctx.from.sector().build(), // Player hasn't joined/initialized
+        Err(_) => return ctx.from.sector().r#where(|sector| sector.id.eq(0)).build(), // Player hasn't joined/initialized
     };
 
     ctx.from

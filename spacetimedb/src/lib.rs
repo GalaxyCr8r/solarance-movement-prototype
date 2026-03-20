@@ -10,6 +10,8 @@ mod views;
 
 mod reducers;
 
+mod sectors;
+
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {
     let dsl = spacetimedsl::dsl(ctx);

@@ -2,16 +2,20 @@ use solarance_shared::physics::predict_movement;
 use spacetimedb::*;
 use spacetimedsl::*;
 
-use crate::{physics::*, tables::*};
+use crate::{physics::*, sectors::observe_all_public_sectors, tables::*};
 
 #[reducer]
 pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
     // Spawn a ship for the player if they don't have one
-    if dsl.get_space_ship_by_id(SpaceShipId::new(ctx.sender())).is_err() {
+    if dsl
+        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+        .is_err()
+    {
         // Get ship configuration to copy max_speed and max_turn_rate
-        let config = dsl.get_ship_config_by_id(ShipConfigId::new(1))
+        let config = dsl
+            .get_ship_config_by_id(ShipConfigId::new(1))
             .expect("Default ship config not found");
 
         dsl.create_space_ship(CreateSpaceShip {
@@ -35,25 +39,27 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
                 is_breaking: false,
                 turn_direction: 0,
             },
-        });
+        })?;
 
         dsl.create_player_state(CreatePlayerState {
             id: ctx.sender(),
             current_system_id: 1,
             current_sector_id: 1,
-        });
+        })?;
 
         dsl.create_visited_sector(CreateVisitedSector {
             player_id: ctx.sender(),
             sector_id: 1,
             visited_status: VisitedStatus::Visited,
-        });
+        })?;
+
+        observe_all_public_sectors(ctx)?;
 
         dsl.create_visited_system(CreateVisitedSystem {
             player_id: ctx.sender(),
             system_id: 1,
             visited_status: VisitedStatus::Visited,
-        });
+        })?;
     }
 
     Ok(())
@@ -63,23 +69,28 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
 pub fn travel_to_sector(ctx: &ReducerContext, sector_id: u64) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
-    let mut space_ship = dsl.get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+    let mut space_ship = dsl
+        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
         .map_err(|_| "Ship not found")?;
 
-    let mut player_state = dsl.get_player_state_by_id(PlayerStateId::new(ctx.sender()))
+    let mut player_state = dsl
+        .get_player_state_by_id(PlayerStateId::new(ctx.sender()))
         .map_err(|_| "player_state not found")?;
 
-    let target_sector = dsl.get_sector_by_id(SectorId::new(sector_id))
+    let target_sector = dsl
+        .get_sector_by_id(SectorId::new(sector_id))
         .map_err(|_| "Sector not found")?;
 
-    let current_sector = dsl.get_sector_by_id(space_ship.get_sector_id().clone())
+    let current_sector = dsl
+        .get_sector_by_id(space_ship.get_sector_id().clone())
         .map_err(|_| "Current sector not found")?;
 
     if current_sector.get_system_id() != target_sector.get_system_id() {
         return Err("Cannot travel between systems".to_string());
     }
 
-    if !dsl.get_visited_sectors_by_player_id(&ctx.sender())
+    if !dsl
+        .get_visited_sectors_by_player_id(&ctx.sender())
         .any(|v| *v.get_sector_id() == sector_id)
     {
         dsl.create_visited_sector(CreateVisitedSector {
@@ -100,10 +111,12 @@ pub fn travel_to_sector(ctx: &ReducerContext, sector_id: u64) -> Result<(), Stri
 pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
-    let mut space_ship = dsl.get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+    let mut space_ship = dsl
+        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
         .map_err(|_| "Ship not found")?;
 
-    let stats = dsl.get_ship_config_by_id(ShipConfigId::new(space_ship.ship_config_id))
+    let stats = dsl
+        .get_ship_config_by_id(ShipConfigId::new(space_ship.ship_config_id))
         .map_err(|_| "Ship stats not found")?;
 
     // 1. Enforce Server-Side Speed Limits
@@ -143,14 +156,17 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
 pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
-    let mut space_ship = dsl.get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+    let mut space_ship = dsl
+        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
         .map_err(|_| "Ship not found")?;
 
-    let stats = dsl.get_ship_config_by_id(ShipConfigId::new(space_ship.ship_config_id))
+    let stats = dsl
+        .get_ship_config_by_id(ShipConfigId::new(space_ship.ship_config_id))
         .map_err(|_| "Ship stats not found")?;
 
     // 1. Enforce Turn Limits
-    let mut clamped_turn = degrees_per_second.clamp(-*stats.get_max_turn_rate(), *stats.get_max_turn_rate());
+    let mut clamped_turn =
+        degrees_per_second.clamp(-*stats.get_max_turn_rate(), *stats.get_max_turn_rate());
     if clamped_turn.abs() < 0.25 {
         clamped_turn = 0.0;
     }
@@ -193,7 +209,8 @@ pub fn set_thrust_input(
 ) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
-    let mut space_ship = dsl.get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+    let mut space_ship = dsl
+        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
         .map_err(|_| "Ship not found")?;
 
     // Early return if input hasn't changed (Req 3.8)
@@ -213,7 +230,8 @@ pub fn set_thrust_input(
         return Ok(());
     }
 
-    let config = dsl.get_ship_config_by_id(ShipConfigId::new(space_ship.ship_config_id))
+    let config = dsl
+        .get_ship_config_by_id(ShipConfigId::new(space_ship.ship_config_id))
         .map_err(|_| "Ship config not found")?;
 
     let now = ctx.timestamp.to_micros_since_unix_epoch();
@@ -273,7 +291,8 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         ));
     }
 
-    let mut space_ship = dsl.get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+    let mut space_ship = dsl
+        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
         .map_err(|_| "Ship not found")?;
 
     // Early return if input hasn't changed (Req 3.8)
@@ -281,7 +300,8 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         return Ok(());
     }
 
-    let config = dsl.get_ship_config_by_id(ShipConfigId::new(space_ship.ship_config_id))
+    let config = dsl
+        .get_ship_config_by_id(ShipConfigId::new(space_ship.ship_config_id))
         .map_err(|_| "Ship config not found")?;
 
     let now = ctx.timestamp.to_micros_since_unix_epoch();
