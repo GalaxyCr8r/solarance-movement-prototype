@@ -16,26 +16,35 @@ pub fn my_player_state(ctx: &ViewContext) -> Vec<PlayerState> {
 
 /// View: Returns all ships in the player's current sector.
 #[view(accessor = current_sector_ships, public)]
-pub fn current_sector_ships(ctx: &ViewContext) -> Vec<SpaceShip> {
-    let dsl = spacetimedsl::read_only_dsl(ctx);
-
-    // 1. Get the player's current system ID
-    let player = match dsl.get_player_state_by_id(PlayerStateId::new(ctx.sender())) {
-        Ok(p) => p,
-        Err(_) => return Vec::new(), // Player hasn't joined/initialized
-    };
-
-    let current_sector_id = SectorId::new(*player.get_current_sector_id());
-
-    // 2. Filter sectors in this system
-    dsl.get_space_ships_by_sector_id(current_sector_id)
-        .collect()
+pub fn current_sector_ships(ctx: &ViewContext) -> impl Query<SpaceShip> {
+    ctx.from
+        .player_state()
+        .filter(|player| player.id.eq(ctx.sender()))
+        .right_semijoin(ctx.from.space_ship(), |player, ship| {
+            player.current_sector_id.eq(ship.sector_id)
+        })
 }
 
 /// View: Returns all sectors in the player's current system that they are
 /// authorized to see (either because they visited them or they are public).
 #[view(accessor = current_system_visible_sectors, public)]
-pub fn current_system_visible_sectors(ctx: &ViewContext) -> Vec<Sector> {
+pub fn current_system_visible_sectors(ctx: &ViewContext) -> impl Query<Sector> {
+    let dsl = spacetimedsl::read_only_dsl(ctx);
+    // 1. Get the player's current system ID
+    let player = match dsl.get_player_state_by_id(PlayerStateId::new(ctx.sender())) {
+        Ok(p) => p,
+        Err(_) => return ctx.from.sector().build(), // Player hasn't joined/initialized
+    };
+
+    ctx.from
+        .sector()
+        .r#where(|sector| sector.system_id.eq(player.current_system_id))
+        .left_semijoin(ctx.from.visited_sector(), |sector, visited| {
+            sector.id.eq(visited.sector_id)
+        })
+}
+
+pub fn __current_system_visible_sectors(ctx: &ViewContext) -> Vec<Sector> {
     let dsl = spacetimedsl::read_only_dsl(ctx);
 
     // 1. Get the player's current system ID

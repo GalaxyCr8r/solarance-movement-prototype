@@ -83,6 +83,7 @@ pub struct Sector {
     y: i32,
     /// If true, this sector contains a station/gate and is visible
     /// to anyone who has visited the system.
+    #[index(btree)]
     is_public: bool,
 }
 
@@ -96,10 +97,12 @@ pub struct PlayerState {
 
     // This table doesn't need STDSL foreign key constraints
     //#[foreign_key(path = crate, table = system, on_delete = Error)]
+    #[index(btree)]
     pub current_system_id: u32,
 
     // This table doesn't need STDSL foreign key constraints
     //#[foreign_key(path = crate, table = sector, on_delete = Error)]
+    #[index(btree)]
     pub current_sector_id: u64,
 }
 
