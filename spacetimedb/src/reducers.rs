@@ -39,6 +39,7 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
                 is_breaking: false,
                 turn_direction: 0,
             },
+            last_fired: ctx.timestamp.clone(),
         })?;
 
         dsl.create_player_state(CreatePlayerState {
@@ -61,6 +62,82 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
             visited_status: VisitedStatus::Visited,
         })?;
     }
+
+    Ok(())
+}
+
+#[reducer]
+pub fn fire_weapons(ctx: &ReducerContext, fired_at: Timestamp) -> Result<(), String> {
+    let dsl = spacetimedsl::dsl(ctx);
+
+    let mut space_ship = dsl
+        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+        .map_err(|_| "Ship not found")?;
+
+    // Verify that this isn't firing too soon
+    match space_ship
+        .get_last_fired()
+        .checked_add(TimeDuration::from_micros(500_000))
+    {
+        Some(last_fired) => {
+            if last_fired > ctx.timestamp {
+                return Err("Tried firing too soon".to_string());
+            }
+        }
+        None => return Err("Couldn't convert last fired".to_string()),
+    };
+
+    // Create bullet
+    dsl.create_bullet(CreateBullet {
+        player_id: ctx.sender(),
+        sector_id: space_ship.get_sector_id(),
+        damage: 10.0,
+        movement: MovementState {
+            pos: space_ship.movement.pos,
+            velocity: 250.0,
+            rotation: 0.0,
+            angular_velocity: 0.0,
+            last_update_time: fired_at.to_micros_since_unix_epoch(),
+            acceleration: 0.0,
+            angular_acceleration: 0.0,
+            max_speed: 500.0,
+            max_turn_rate: 0.0,
+        },
+    })?;
+
+    // Update ship's last fired
+    space_ship.set_last_fired(fired_at);
+    dsl.update_space_ship_by_id(space_ship)?;
+
+    Ok(())
+}
+
+#[reducer]
+pub fn submit_hit(
+    ctx: &ReducerContext,
+    hit_at: Timestamp,
+    hit_ship_id: SpaceShipId,
+    bullet_id: BulletId,
+) -> Result<(), String> {
+    let dsl = spacetimedsl::dsl(ctx);
+
+    let space_ship = dsl
+        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+        .map_err(|_| "Ship not found")?;
+
+    let mut hit_ship = dsl
+        .get_space_ship_by_id(hit_ship_id)
+        .map_err(|_| "Ship not found")?;
+
+    if space_ship.get_sector_id() != hit_ship.get_sector_id() {
+        return Err("Tried to submit a bullet hit a ship in a different sector!".to_string());
+    }
+
+    // TODO: if hit_at is before hit_ship's last movement timestamp, then use it's current originator posiiton.
+
+    // TODO: predict the hit_ship's position and bullet's position at timestamp
+
+    // TODO: check if they are near each other
 
     Ok(())
 }
