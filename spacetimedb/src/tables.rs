@@ -23,6 +23,12 @@ impl VisitedStatus {
     }
 }
 
+// impl query_builder::RHS<VisitedSystem, VisitedStatus> for VisitedStatus {
+//     fn to_expr(self) -> query_builder::Operand<VisitedSystem> {
+//         query_builder::Operand::Literal(query_builder::LiteralValue::new(self))
+//     }
+// }
+
 #[dsl(plural_name = ship_configs, method(update = false, delete = true))]
 #[table(accessor = ship_config, public)]
 pub struct ShipConfig {
@@ -138,7 +144,9 @@ pub struct VisitedSystem {
     id: u64,
     #[index(btree)]
     player_id: Identity,
+    #[index(btree)]
     system_id: u32,
+    #[index(btree)]
     visited_status: VisitedStatus,
 }
 
