@@ -23,12 +23,6 @@ impl VisitedStatus {
     }
 }
 
-// impl query_builder::RHS<VisitedSystem, VisitedStatus> for VisitedStatus {
-//     fn to_expr(self) -> query_builder::Operand<VisitedSystem> {
-//         query_builder::Operand::Literal(query_builder::LiteralValue::new(self))
-//     }
-// }
-
 #[dsl(plural_name = ship_configs, method(update = false, delete = true))]
 #[table(accessor = ship_config, public)]
 pub struct ShipConfig {
@@ -71,7 +65,7 @@ pub struct Bullet {
     #[auto_inc]
     #[create_wrapper]
     //#[referenced_by(path = crate, table = sector)]
-    id: u32,
+    pub id: u32,
 
     #[index(btree)]
     //#[foreign_key(path = crate, column = id, table = sector, on_delete = Error)]
@@ -81,6 +75,8 @@ pub struct Bullet {
     #[use_wrapper(crate::SectorId)]
     //#[foreign_key(path = crate, column = id, table = sector, on_delete = Error)]
     pub sector_id: u64,
+    /// Microseconds since unix epoch
+    pub lifetime: i64,
     pub damage: f32,
     pub movement: physics::MovementState,
     created_at: spacetimedb::Timestamp,
@@ -144,9 +140,7 @@ pub struct VisitedSystem {
     id: u64,
     #[index(btree)]
     player_id: Identity,
-    #[index(btree)]
     system_id: u32,
-    #[index(btree)]
     visited_status: VisitedStatus,
 }
 

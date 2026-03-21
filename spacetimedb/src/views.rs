@@ -25,6 +25,17 @@ pub fn current_sector_ships(ctx: &ViewContext) -> impl Query<SpaceShip> {
         })
 }
 
+/// View: Returns all bullets in the player's current sector.
+#[view(accessor = current_sector_bullets, public)]
+pub fn current_sector_bullets(ctx: &ViewContext) -> impl Query<Bullet> {
+    ctx.from
+        .player_state()
+        .filter(|player| player.id.eq(ctx.sender()))
+        .right_semijoin(ctx.from.bullet(), |player, bullet| {
+            player.current_sector_id.eq(bullet.sector_id)
+        })
+}
+
 /// View: Returns all sectors in the player's current system that they are
 /// authorized to see (either because they visited them or they are public).
 #[view(accessor = current_system_visible_sectors, public)]
@@ -46,29 +57,10 @@ pub fn current_system_visible_sectors(ctx: &ViewContext) -> impl Query<Sector> {
 
 /// View: Returns the full System details for every system the player has ever visited.
 #[view(accessor = my_visited_systems, public)]
-pub fn my_visited_systems(ctx: &ViewContext) -> impl Query<System> {
-    // let dsl = spacetimedsl::read_only_dsl(ctx);
-    // dsl.get_visited_systems_by_player_id(&ctx.sender())
-    //     .filter(|sys| sys.get_visited_status().is_visible())
-    //     .flat_map(|v| dsl.get_system_by_id(SystemId::new(*v.get_system_id())))
-    //     .collect()
-
-    // ctx.db
-    //     .visited_system()
-    //     .player_id()
-    //     .filter(ctx.sender())
-    //     .filter(|sys| sys.get_visited_status().is_visible())
-    //     .flat_map(|v| ctx.db.system().id().find(v.system_id))
-    //     .collect()
-
-    ctx.from
-        .visited_system()
-        .filter(|v| {
-            v.player_id
-                .eq(ctx.sender())
-                .and(v.visited_status.eq(VisitedStatus::Visited))
-        })
-        .right_semijoin(ctx.from.system(), |visited, system| {
-            visited.system_id.eq(system.id)
-        })
+pub fn my_visited_systems(ctx: &ViewContext) -> Vec<System> {
+    let dsl = spacetimedsl::read_only_dsl(ctx);
+    dsl.get_visited_systems_by_player_id(&ctx.sender())
+        .filter(|sys| sys.get_visited_status().is_visible())
+        .flat_map(|v| dsl.get_system_by_id(SystemId::new(*v.get_system_id())))
+        .collect()
 }

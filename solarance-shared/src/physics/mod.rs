@@ -4,6 +4,15 @@ pub struct Vec2 {
     pub y: f32,
 }
 
+impl Vec2 {
+    pub fn distance_to(&self, other: &Vec2) -> f32 {
+        ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
+    }
+    pub fn distance_to_sq(&self, other: &Vec2) -> f32 {
+        (self.x - other.x).powi(2) + (self.y - other.y).powi(2)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct MovementState {
     pub pos: Vec2,

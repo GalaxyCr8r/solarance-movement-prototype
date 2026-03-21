@@ -1,3 +1,4 @@
+use log::info;
 use solarance_shared::physics::predict_movement;
 use spacetimedb::*;
 use spacetimedsl::*;
@@ -92,6 +93,7 @@ pub fn fire_weapons(ctx: &ReducerContext, fired_at: Timestamp) -> Result<(), Str
         player_id: ctx.sender(),
         sector_id: space_ship.get_sector_id(),
         damage: 10.0,
+        lifetime: fired_at.to_micros_since_unix_epoch() + 1_000_000,
         movement: MovementState {
             pos: space_ship.movement.pos,
             velocity: 250.0,
@@ -112,6 +114,8 @@ pub fn fire_weapons(ctx: &ReducerContext, fired_at: Timestamp) -> Result<(), Str
     Ok(())
 }
 
+/// Called by clients in the same sector as the bullet when they detect a bullet hit any ship in that sector.
+/// This is used to verify that the bullet actually hit the ship.
 #[reducer]
 pub fn submit_hit(
     ctx: &ReducerContext,
@@ -121,7 +125,7 @@ pub fn submit_hit(
 ) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
-    let space_ship = dsl
+    let reporter_ship = dsl
         .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
         .map_err(|_| "Ship not found")?;
 
@@ -129,15 +133,45 @@ pub fn submit_hit(
         .get_space_ship_by_id(hit_ship_id)
         .map_err(|_| "Ship not found")?;
 
-    if space_ship.get_sector_id() != hit_ship.get_sector_id() {
+    if reporter_ship.get_sector_id() != hit_ship.get_sector_id() {
         return Err("Tried to submit a bullet hit a ship in a different sector!".to_string());
     }
 
-    // TODO: if hit_at is before hit_ship's last movement timestamp, then use it's current originator posiiton.
+    let bullet = dsl
+        .get_bullet_by_id(&bullet_id)
+        .map_err(|_| "Bullet not found")?;
 
-    // TODO: predict the hit_ship's position and bullet's position at timestamp
+    if bullet.lifetime < ctx.timestamp.to_micros_since_unix_epoch() {
+        info!("Bullet has expired!");
+        dsl.delete_bullet_by_id(bullet_id)?;
+        return Ok(());
+    }
 
-    // TODO: check if they are near each other
+    // If hit_at is before hit_ship's last movement timestamp, then use it's current originator posiiton.
+    let hit_ship_movement = convert_to_movement_state(&hit_ship.movement);
+    let hit_ship_pos = if hit_at.to_micros_since_unix_epoch() < hit_ship.movement.last_update_time {
+        hit_ship_movement.pos
+    } else {
+        predict_movement(&hit_ship_movement, hit_at.to_micros_since_unix_epoch()).0
+    };
+
+    // Predict the hit_ship's position and bullet's position at timestamp
+    let bullet_movement = convert_to_movement_state(&bullet.movement);
+    let bullet_pos = if hit_at.to_micros_since_unix_epoch() < bullet.movement.last_update_time {
+        bullet_movement.pos
+    } else {
+        predict_movement(&bullet_movement, hit_at.to_micros_since_unix_epoch()).0
+    };
+
+    // Check if they are near each other
+    let distance = hit_ship_pos.distance_to_sq(&bullet_pos);
+    if distance > 1.0 {
+        return Err("Bullet missed!".to_string());
+    }
+
+    // TODO: Abstract out damage calculation to a function
+    hit_ship.health -= bullet.damage;
+    dsl.update_space_ship_by_id(hit_ship)?;
 
     Ok(())
 }
@@ -170,7 +204,7 @@ pub fn travel_to_sector(ctx: &ReducerContext, sector_id: u64) -> Result<(), Stri
         .get_visited_sectors_by_player_id(&ctx.sender())
         .any(|v| *v.get_sector_id() == sector_id)
     {
-        dsl.create_visited_sector(CreateVisitedSector {
+        let _ = dsl.create_visited_sector(CreateVisitedSector {
             player_id: ctx.sender(),
             sector_id: sector_id,
             visited_status: VisitedStatus::Visited,
@@ -179,8 +213,8 @@ pub fn travel_to_sector(ctx: &ReducerContext, sector_id: u64) -> Result<(), Stri
 
     space_ship.sector_id = sector_id;
     player_state.current_sector_id = sector_id;
-    dsl.update_space_ship_by_id(space_ship);
-    dsl.update_player_state_by_id(player_state);
+    dsl.update_space_ship_by_id(space_ship)?;
+    dsl.update_player_state_by_id(player_state)?;
     Ok(())
 }
 
