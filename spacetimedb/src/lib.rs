@@ -10,11 +10,15 @@ mod views;
 
 mod reducers;
 
+mod sectors;
+
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {
+    let dsl = spacetimedsl::dsl(ctx);
+
     // Seed initial ship types
-    ctx.db.ship_config().insert(ShipConfig {
-        ship_config_id: 1,
+    dsl.create_ship_config(CreateShipConfig {
+        id: 1,
         max_health: 100,
         max_speed: 150.0,
         max_turn_rate: 80.0,
@@ -22,56 +26,53 @@ pub fn init(ctx: &ReducerContext) {
         max_angular_acceleration: 180.0,
     });
 
-    ctx.db.sectors().insert(Sector {
+    dsl.create_sector(CreateSector {
         id: 1,
-        system_id: 1,
+        system_id: SystemId::new(1),
         is_public: true,
         x: 0,
         y: 0,
     });
 
-    ctx.db.sectors().insert(Sector {
+    dsl.create_sector(CreateSector {
         id: 2,
-        system_id: 1,
+        system_id: SystemId::new(1),
         is_public: true,
         x: 5,
         y: 0,
     });
 
-    ctx.db.sectors().insert(Sector {
+    dsl.create_sector(CreateSector {
         id: 3,
-        system_id: 1,
+        system_id: SystemId::new(1),
         is_public: false,
         x: 15,
         y: 0,
     });
 
-    ctx.db.systems().insert(System {
-        id: 1,
+    dsl.create_system(CreateSystem {
         name: "Sol".to_string(),
     });
 
-    ctx.db.systems().insert(System {
-        id: 2,
+    dsl.create_system(CreateSystem {
         name: "Alpha Centauri".to_string(),
     });
 
-    ctx.db.systems().insert(System {
-        id: 3,
+    dsl.create_system(CreateSystem {
         name: "Tau Ceti".to_string(),
     });
 
-    ctx.db.sectors().insert(Sector {
+    dsl.create_sector(CreateSector {
         id: 20,
-        system_id: 2,
+        system_id: SystemId::new(2),
         is_public: true,
         x: 0,
         y: 0,
     });
 
-    ctx.db.sectors().insert(Sector {
+    dsl.create_sector(CreateSector {
         id: 30,
-        system_id: 3,
+        system_id: SystemId::new(3),
         is_public: true,
         x: 0,
         y: 0,

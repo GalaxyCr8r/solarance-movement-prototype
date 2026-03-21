@@ -1,19 +1,19 @@
 use spacetimedb::SpacetimeType;
 
-#[derive(SpacetimeType, Clone, Copy, Debug)]
+#[derive(SpacetimeType, Clone, Copy, Debug, PartialEq)]
 pub struct Vec2 {
     pub x: f32,
     pub y: f32,
 }
 
-#[derive(SpacetimeType, Clone, Copy, Debug)]
+#[derive(SpacetimeType, Clone, Copy, Debug, PartialEq)]
 pub struct InputState {
     pub is_thrusting: bool,
     pub is_breaking: bool,
     pub turn_direction: i8,
 }
 
-#[derive(SpacetimeType, Clone, Copy, Debug)]
+#[derive(SpacetimeType, Clone, Copy, Debug, PartialEq)]
 pub struct MovementState {
     pub pos: Vec2,
     /// Pixels per second

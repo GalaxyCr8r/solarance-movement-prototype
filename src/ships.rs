@@ -102,9 +102,9 @@ impl ShipManager {
             .iter()
             .map(|ship| {
                 (
-                    ship.entity_id,
+                    ship.id,
                     ClientShip {
-                        entity_id: ship.entity_id,
+                        entity_id: ship.id,
                         ship_config_id: ship.ship_config_id,
                         movement: convert_movement_state(&ship.movement),
                     },
@@ -153,9 +153,9 @@ impl ShipManager {
     pub fn upsert_ship(&self, ship: SpaceShip) {
         let mut ships = self.ships.write().unwrap();
         ships.insert(
-            ship.entity_id,
+            ship.id,
             ClientShip {
-                entity_id: ship.entity_id,
+                entity_id: ship.id,
                 ship_config_id: ship.ship_config_id,
                 movement: convert_movement_state(&ship.movement),
             },
