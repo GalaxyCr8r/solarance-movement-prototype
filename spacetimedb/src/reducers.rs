@@ -68,12 +68,20 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 #[reducer]
-pub fn fire_weapons(ctx: &ReducerContext, fired_at: Timestamp) -> Result<(), String> {
+pub fn fire_weapons(ctx: &ReducerContext, fired_at: i64) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
     let mut space_ship = dsl
         .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
         .map_err(|_| "Ship not found")?;
+
+    // Calculate the ship's position at the time of firing
+    let ship_movement = convert_to_movement_state(&space_ship.movement);
+    let (ship_pos, ship_rot) = if fired_at < space_ship.movement.last_update_time {
+        (ship_movement.pos, ship_movement.rotation)
+    } else {
+        predict_movement(&ship_movement, fired_at)
+    };
 
     // Verify that this isn't firing too soon
     match space_ship
@@ -93,13 +101,16 @@ pub fn fire_weapons(ctx: &ReducerContext, fired_at: Timestamp) -> Result<(), Str
         player_id: ctx.sender(),
         sector_id: space_ship.get_sector_id(),
         damage: 10.0,
-        lifetime: fired_at.to_micros_since_unix_epoch() + 1_000_000,
+        lifetime: fired_at + 1_000_000,
         movement: MovementState {
-            pos: space_ship.movement.pos,
+            pos: Vec2 {
+                x: ship_pos.x,
+                y: ship_pos.y,
+            },
             velocity: 250.0,
-            rotation: 0.0,
+            rotation: ship_rot,
             angular_velocity: 0.0,
-            last_update_time: fired_at.to_micros_since_unix_epoch(),
+            last_update_time: fired_at,
             acceleration: 0.0,
             angular_acceleration: 0.0,
             max_speed: 500.0,
@@ -108,7 +119,7 @@ pub fn fire_weapons(ctx: &ReducerContext, fired_at: Timestamp) -> Result<(), Str
     })?;
 
     // Update ship's last fired
-    space_ship.set_last_fired(fired_at);
+    space_ship.set_last_fired(Timestamp::from_micros_since_unix_epoch(fired_at));
     dsl.update_space_ship_by_id(space_ship)?;
 
     Ok(())
@@ -449,6 +460,6 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         max_turn_rate: *config.get_max_turn_rate(),
     };
 
-    dsl.update_space_ship_by_id(space_ship);
+    dsl.update_space_ship_by_id(space_ship)?;
     Ok(())
 }

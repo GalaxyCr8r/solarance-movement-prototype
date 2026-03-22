@@ -78,7 +78,7 @@ impl BulletManager {
 
         for (_eid, bullet) in bullets.iter() {
             let (pos, rotation) = bullet.predict_current(current_time_micros);
-            render::draw_bullet(pos, rotation);
+            render::draw_bullet(pos, rotation.to_radians());
         }
     }
 }

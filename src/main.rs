@@ -17,6 +17,8 @@ mod ships;
 use ships::*;
 mod bullets;
 use bullets::*;
+
+use crate::utilities::get_server_time;
 mod utilities;
 
 pub struct GameState<'a> {
@@ -135,6 +137,13 @@ fn handle_input(ctx: &DbConnection) {
     //         None => return,
     //     }
     // };
+
+    if is_key_pressed(KeyCode::Space) {
+        let result = ctx.reducers().fire_weapons(get_server_time(0));
+        if let Err(e) = result {
+            println!("Error firing weapon: {}", e);
+        }
+    }
 
     // Determine current input state from keyboard
     let is_thrusting = is_key_down(KeyCode::W) || is_key_down(KeyCode::Up);
