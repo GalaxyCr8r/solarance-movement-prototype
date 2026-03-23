@@ -1,4 +1,5 @@
 use macroquad::color::WHITE;
+use macroquad::shapes::draw_line;
 use macroquad::text::draw_text;
 use solarance_shared::physics;
 use spacetimedb_sdk::*;
@@ -13,7 +14,7 @@ use crate::utilities::*;
 #[derive(Clone, Debug)]
 pub struct ClientShip {
     pub entity_id: Identity,
-    pub ship_config_id: u32,
+    pub state: SpaceShip,
     pub movement: physics::MovementState,
 }
 
@@ -52,7 +53,7 @@ impl ShipManager {
                     ship.id,
                     ClientShip {
                         entity_id: ship.id,
-                        ship_config_id: ship.ship_config_id,
+                        state: ship.clone(),
                         movement: convert_movement_state(&ship.movement),
                     },
                 )
@@ -74,24 +75,35 @@ impl ShipManager {
 
         for (_eid, ship) in ships.iter() {
             let (pos, rotation) = ship.predict_current(current_time_micros);
+            draw_line(pos.x - 16.0, pos.y, pos.x + 16.0, pos.y, 2.0, WHITE);
+            draw_line(pos.x, pos.y - 16.0, pos.x, pos.y + 16.0, 2.0, WHITE);
+
             draw_ship(pos.x, pos.y, rotation.to_radians());
+
             draw_text(
-                &format!(
-                    "{}",
-                    (current_time_micros - ship.movement.last_update_time) / 1_000
-                ),
-                pos.x,
-                pos.y,
+                &format!("Hull: {}", ship.state.health),
+                pos.x - 32.0,
+                pos.y - 32.0,
                 20.0,
                 WHITE,
             );
-            draw_text(
-                &format!("{}", ship.movement.angular_velocity),
-                pos.x,
-                pos.y - 20.0,
-                20.0,
-                WHITE,
-            );
+            // draw_text(
+            //     &format!(
+            //         "{}",
+            //         (current_time_micros - ship.movement.last_update_time) / 1_000
+            //     ),
+            //     pos.x,
+            //     pos.y,
+            //     20.0,
+            //     WHITE,
+            // );
+            // draw_text(
+            //     &format!("{}", ship.movement.angular_velocity),
+            //     pos.x,
+            //     pos.y - 20.0,
+            //     20.0,
+            //     WHITE,
+            // );
         }
     }
 
@@ -102,7 +114,7 @@ impl ShipManager {
             ship.id,
             ClientShip {
                 entity_id: ship.id,
-                ship_config_id: ship.ship_config_id,
+                state: ship.clone(),
                 movement: convert_movement_state(&ship.movement),
             },
         );
