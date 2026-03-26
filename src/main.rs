@@ -81,6 +81,7 @@ async fn main() -> Result<(), macroquad::Error> {
     loop {
         ship_manager.sync_from_db(&game_state.ctx.db);
         bullet_manager.sync_from_db(&game_state.ctx.db);
+        bullet_manager.check_collisions(&ship_manager, game_state.ctx);
         clear_background(BLACK);
 
         // Focus camera on current target (usually the player's ship)
