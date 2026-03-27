@@ -41,7 +41,12 @@ pub struct ShipConfig {
 pub struct SpaceShip {
     #[primary_key]
     #[create_wrapper]
-    pub id: Identity,
+    #[auto_inc]
+    pub id: u64,
+
+    #[index(btree)]
+    #[unique]
+    pub player_id: Identity,
 
     #[index(btree)]
     #[use_wrapper(crate::SectorId)]

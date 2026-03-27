@@ -13,7 +13,7 @@ use crate::utilities::*;
 /// Client-side ship data with dead reckoning support
 #[derive(Clone, Debug)]
 pub struct ClientShip {
-    pub entity_id: Identity,
+    pub entity_id: u64,
     pub state: SpaceShip,
     pub movement: physics::MovementState,
 }
@@ -28,7 +28,7 @@ impl ClientShip {
 /// Thread-safe ship manager for dead reckoning
 #[derive(Clone)]
 pub struct ShipManager {
-    ships: Arc<RwLock<HashMap<Identity, ClientShip>>>,
+    ships: Arc<RwLock<HashMap<u64, ClientShip>>>,
     server_offset_micros: i64, // server_time - client_time
 }
 
@@ -45,7 +45,7 @@ impl ShipManager {
         let mut ships = self.ships.write().unwrap();
 
         // Get current ships from database
-        let db_ships: HashMap<Identity, ClientShip> = db
+        let db_ships: HashMap<u64, ClientShip> = db
             .current_sector_ships()
             .iter()
             .map(|ship| {
@@ -121,7 +121,7 @@ impl ShipManager {
     }
 
     /// Remove a ship by entity ID
-    pub fn remove_ship(&self, entity_id: &Identity) {
+    pub fn remove_ship(&self, entity_id: &u64) {
         let mut ships = self.ships.write().unwrap();
         ships.remove(entity_id);
     }
@@ -133,7 +133,7 @@ impl ShipManager {
     }
 
     /// Get a specific ship by entity ID
-    pub fn get_ship(&self, entity_id: &Identity) -> Option<ClientShip> {
+    pub fn get_ship(&self, entity_id: &u64) -> Option<ClientShip> {
         let ships = self.ships.read().unwrap();
         ships.get(entity_id).cloned()
     }
