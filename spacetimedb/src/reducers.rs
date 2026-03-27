@@ -161,7 +161,7 @@ pub fn submit_hit(
     if bullet.lifetime < ctx.timestamp.to_micros_since_unix_epoch() {
         info!("Bullet has expired!");
         dsl.delete_bullet_by_id(bullet_id)?;
-        return Ok(());
+        return Err("Expired".to_string());
     }
 
     // If hit_at is before hit_ship's last movement timestamp, then use it's current originator posiiton.
@@ -188,7 +188,15 @@ pub fn submit_hit(
 
     // TODO: Abstract out damage calculation to a function
     hit_ship.health -= bullet.damage;
-    dsl.update_space_ship_by_id(&hit_ship)?;
+
+    if hit_ship.health <= 0.0 {
+        dsl.delete_space_ship_by_id(&hit_ship)?;
+    } else {
+        dsl.update_space_ship_by_id(hit_ship.clone())?;
+    }
+
+    // If we got this far and dealt damage, then this bullet should be deleted.
+    dsl.delete_bullet_by_id(bullet_id)?;
 
     // Create damage event
     dsl.create_damage_event(CreateDamageEvent {

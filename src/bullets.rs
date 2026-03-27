@@ -10,7 +10,9 @@ use crate::{module_bindings::*, render};
 #[derive(Clone, Debug)]
 pub struct ClientBullet {
     pub entity_id: u32,
+    pub player_id: Identity,
     pub movement: physics::MovementState,
+    pub lifetime: i64,
 }
 
 impl ClientBullet {
@@ -43,15 +45,20 @@ impl BulletManager {
         let db_bullets: HashMap<u32, ClientBullet> = db
             .current_sector_bullets()
             .iter()
-            .map(|b| {
+            .filter_map(|b| {
                 let movement = convert_movement_state(&b.movement);
-                (
+                if b.lifetime < get_server_time(self.server_offset_micros) {
+                    return None;
+                }
+                Some((
                     b.id,
                     ClientBullet {
                         entity_id: b.id,
+                        player_id: b.player_id,
                         movement,
+                        lifetime: b.lifetime,
                     },
-                )
+                ))
             })
             .collect();
 
@@ -66,11 +73,7 @@ impl BulletManager {
     /// ship's dead-reckoned position. If the distance is within the threshold,
     /// `submit_hit` is called on the server and the bullet is removed from the
     /// local cache so we don't fire duplicate reports before the DB syncs.
-    pub fn check_collisions(
-        &self,
-        ship_manager: &crate::ships::ShipManager,
-        ctx: &DbConnection,
-    ) {
+    pub fn check_collisions(&self, ship_manager: &crate::ships::ShipManager, ctx: &DbConnection) {
         const SHIP_RADIUS: f32 = 32.0;
         const HIT_DIST_SQ: f32 = SHIP_RADIUS * SHIP_RADIUS;
 
@@ -80,15 +83,24 @@ impl BulletManager {
         // Snapshot ships so we don't hold a lock during the reducer call.
         let ships = ship_manager.get_all();
 
-        let mut hit_bullet_ids: Vec<u32> = Vec::new();
+        let mut bullet_ids_to_remove: Vec<u32> = Vec::new();
 
         {
             let bullets = self.bullets.read().unwrap();
 
             'bullet_loop: for (bullet_id, bullet) in bullets.iter() {
+                if now_micros > bullet.lifetime {
+                    bullet_ids_to_remove.push(*bullet_id);
+                    continue 'bullet_loop;
+                }
+
                 let (bullet_pos, _) = bullet.predict_current(now_micros);
 
                 for ship in &ships {
+                    if ship.state.player_id == bullet.player_id {
+                        continue;
+                    }
+
                     let (ship_pos, _) = ship.predict_current(now_micros);
 
                     let dx = bullet_pos.x - ship_pos.x;
@@ -96,16 +108,30 @@ impl BulletManager {
                     let dist_sq = dx * dx + dy * dy;
 
                     if dist_sq <= HIT_DIST_SQ {
-                        let result = ctx.reducers().submit_hit(
+                        let manager = self.clone();
+                        let b_id = *bullet_id;
+                        let result = ctx.reducers().submit_hit_then(
                             hit_at,
-                            SpaceShipId { value: ship.entity_id },
-                            BulletId { value: *bullet_id },
+                            SpaceShipId {
+                                value: ship.entity_id,
+                            },
+                            BulletId { value: b_id },
+                            move |_db, result| match result {
+                                Ok(_) => {
+                                    println!("Hit submitted successfully");
+                                    // Call remove_bullet from inside this callback function
+                                    manager.remove_bullet(b_id);
+                                }
+                                Err(e) => {
+                                    println!("Error submitting hit: {}", e);
+                                }
+                            },
                         );
                         if let Err(e) = result {
                             println!("Error submitting hit: {}", e);
                         }
                         // Only report one hit per bullet (first ship wins).
-                        hit_bullet_ids.push(*bullet_id);
+                        //bullet_ids_to_remove.push(*bullet_id);
                         continue 'bullet_loop;
                     }
                 }
@@ -113,12 +139,17 @@ impl BulletManager {
         }
 
         // Remove locally so duplicates aren't sent on the next frame.
-        if !hit_bullet_ids.is_empty() {
+        if !bullet_ids_to_remove.is_empty() {
             let mut bullets = self.bullets.write().unwrap();
-            for id in hit_bullet_ids {
+            for id in bullet_ids_to_remove {
                 bullets.remove(&id);
             }
         }
+    }
+
+    fn remove_bullet(&self, bullet_id: u32) {
+        let mut bullets = self.bullets.write().unwrap();
+        bullets.remove(&bullet_id);
     }
 
     /// Render all bullets
