@@ -167,24 +167,30 @@ pub fn submit_hit(
     // If hit_at is before hit_ship's last movement timestamp, then use it's current originator posiiton.
     let hit_ship_movement = convert_to_movement_state(&hit_ship.movement);
     let hit_ship_pos = if hit_at.to_micros_since_unix_epoch() < hit_ship.movement.last_update_time {
+        info!("Using hit_ship's current originator position");
         hit_ship_movement.pos
     } else {
+        info!("Predicting movement of the hit ship!");
         predict_movement(&hit_ship_movement, hit_at.to_micros_since_unix_epoch()).0
     };
+    info!("Using position! ({}, {})", hit_ship_pos.x, hit_ship_pos.y);
 
     // Predict the hit_ship's position and bullet's position at timestamp
     let bullet_movement = convert_to_movement_state(&bullet.movement);
     let bullet_pos = if hit_at.to_micros_since_unix_epoch() < bullet.movement.last_update_time {
+        info!("Using bullet's current originator position");
         bullet_movement.pos
     } else {
+        info!("Predicting movement of the bullet!");
         predict_movement(&bullet_movement, hit_at.to_micros_since_unix_epoch()).0
     };
 
     // Check if they are near each other
     let distance = hit_ship_pos.distance_to_sq(&bullet_pos);
-    if distance > 32.0 {
-        return Err(format!("Bullet missed! Distance: {}", distance));
+    if distance > 32.0 * 32.0 {
+        return Err(format!("Bullet missed! Distance Squared: {}", distance));
     }
+    info!("Bullet hit! Distance Squared: {}", distance);
 
     // TODO: Abstract out damage calculation to a function
     hit_ship.health -= bullet.damage;
