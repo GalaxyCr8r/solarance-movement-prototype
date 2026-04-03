@@ -18,6 +18,8 @@ fn make_state(
         angular_acceleration: 0.0,
         max_speed: 500.0,
         max_turn_rate: 180.0,
+        dampen_forward_velocity: 0.0,
+        dampen_angular_velocity: 0.0,
     }
 }
 

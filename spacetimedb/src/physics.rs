@@ -32,6 +32,10 @@ pub struct MovementState {
     pub max_speed: f32,
     /// Degrees per second (angular velocity cap)
     pub max_turn_rate: f32,
+    /// Dampening rate applied to forward velocity when acceleration == 0 (pixels per second squared).
+    pub dampen_forward_velocity: f32,
+    /// Dampening rate applied to angular velocity when angular_acceleration == 0 (degrees per second squared).
+    pub dampen_angular_velocity: f32,
 }
 
 pub fn convert_to_movement_state(
@@ -50,6 +54,8 @@ pub fn convert_to_movement_state(
         angular_acceleration: state.angular_acceleration,
         max_speed: state.max_speed,
         max_turn_rate: state.max_turn_rate,
+        dampen_forward_velocity: state.dampen_forward_velocity,
+        dampen_angular_velocity: state.dampen_angular_velocity,
     }
 }
 
@@ -69,5 +75,7 @@ pub fn convert_from_movement_state(
         angular_acceleration: state.angular_acceleration,
         max_speed: state.max_speed,
         max_turn_rate: state.max_turn_rate,
+        dampen_forward_velocity: state.dampen_forward_velocity,
+        dampen_angular_velocity: state.dampen_angular_velocity,
     }
 }

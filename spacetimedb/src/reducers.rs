@@ -1,5 +1,5 @@
 use log::info;
-use solarance_shared::physics::predict_movement;
+use solarance_shared::physics::{predict_movement, predict_velocities};
 use spacetimedb::*;
 use spacetimedsl::*;
 
@@ -31,6 +31,8 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
                 angular_acceleration: 0.0,
                 max_speed: *config.get_max_speed(),
                 max_turn_rate: *config.get_max_turn_rate(),
+                dampen_forward_velocity: 0.0,
+                dampen_angular_velocity: 0.0,
             },
             input_state: InputState {
                 is_thrusting: false,
@@ -112,6 +114,8 @@ pub fn fire_weapons(ctx: &ReducerContext, fired_at: i64) -> Result<(), String> {
             angular_acceleration: 0.0,
             max_speed: 500.0,
             max_turn_rate: 0.0,
+            dampen_forward_velocity: 0.0,
+            dampen_angular_velocity: 0.0,
         },
     })?;
 
@@ -298,6 +302,8 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
         angular_acceleration: space_ship.movement.angular_acceleration,
         max_speed: space_ship.movement.max_speed,
         max_turn_rate: space_ship.movement.max_turn_rate,
+        dampen_forward_velocity: space_ship.movement.dampen_forward_velocity,
+        dampen_angular_velocity: space_ship.movement.dampen_angular_velocity,
     };
 
     // 4. Update Database
@@ -348,6 +354,8 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
         angular_acceleration: space_ship.movement.angular_acceleration,
         max_speed: space_ship.movement.max_speed,
         max_turn_rate: space_ship.movement.max_turn_rate,
+        dampen_forward_velocity: space_ship.movement.dampen_forward_velocity,
+        dampen_angular_velocity: space_ship.movement.dampen_angular_velocity,
     };
 
     dsl.update_space_ship_by_id(space_ship);
@@ -388,18 +396,16 @@ pub fn set_thrust_input(
         .map_err(|_| "Ship config not found")?;
 
     let now = ctx.timestamp.to_micros_since_unix_epoch();
-    let dt = (now - space_ship.movement.last_update_time) as f32 / 1_000_000.0;
 
     // 1. Predict current position and rotation
-    let (predicted_pos, predicted_rot) =
-        predict_movement(&convert_to_movement_state(&space_ship.movement), now);
+    let shared_state = convert_to_movement_state(&space_ship.movement);
+    let (predicted_pos, predicted_rot) = predict_movement(&shared_state, now);
 
-    // 2. Calculate predicted velocities: v = v₀ + a*dt, clamped
-    let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
-        .clamp(0.0, *config.get_max_speed());
-    let predicted_angular_velocity = (space_ship.movement.angular_velocity
-        + space_ship.movement.angular_acceleration * dt)
-        .clamp(-*config.get_max_turn_rate(), *config.get_max_turn_rate());
+    // 2. Predict current velocities, including any active dampening
+    let (predicted_velocity, predicted_angular_velocity) = predict_velocities(&shared_state, now);
+    let predicted_velocity = predicted_velocity.clamp(0.0, *config.get_max_speed());
+    let predicted_angular_velocity =
+        predicted_angular_velocity.clamp(-*config.get_max_turn_rate(), *config.get_max_turn_rate());
 
     // 3. Calculate new acceleration based on thrust input
     let new_acceleration = if is_thrusting {
@@ -426,6 +432,8 @@ pub fn set_thrust_input(
         last_update_time: now,
         max_speed: *config.get_max_speed(),
         max_turn_rate: *config.get_max_turn_rate(),
+        dampen_forward_velocity: space_ship.movement.dampen_forward_velocity,
+        dampen_angular_velocity: space_ship.movement.dampen_angular_velocity,
     };
 
     dsl.update_space_ship_by_id(space_ship);
@@ -458,21 +466,26 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         .map_err(|_| "Ship config not found")?;
 
     let now = ctx.timestamp.to_micros_since_unix_epoch();
-    let dt = (now - space_ship.movement.last_update_time) as f32 / 1_000_000.0;
 
     // 1. Predict current position and rotation
-    let (predicted_pos, predicted_rot) =
-        predict_movement(&convert_to_movement_state(&space_ship.movement), now);
+    let shared_state = convert_to_movement_state(&space_ship.movement);
+    let (predicted_pos, predicted_rot) = predict_movement(&shared_state, now);
 
-    // 2. Calculate predicted velocities: v = v₀ + a*dt, clamped
-    let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
-        .clamp(0.0, *config.get_max_speed());
-    let predicted_angular_velocity = (space_ship.movement.angular_velocity
-        + space_ship.movement.angular_acceleration * dt)
-        .clamp(-*config.get_max_turn_rate(), *config.get_max_turn_rate());
+    // 2. Predict current velocities, including any active dampening
+    let (predicted_velocity, predicted_angular_velocity) = predict_velocities(&shared_state, now);
+    let predicted_velocity = predicted_velocity.clamp(0.0, *config.get_max_speed());
+    let predicted_angular_velocity =
+        predicted_angular_velocity.clamp(-*config.get_max_turn_rate(), *config.get_max_turn_rate());
 
-    // 3. Calculate new angular acceleration based on turn direction
+    // 3. Calculate new angular acceleration based on turn direction.
+    //    When releasing the turn key (direction == 0), we set no angular
+    //    acceleration but enable dampening so the ship gradually stops spinning.
     let new_angular_acceleration = turn_direction as f32 * *config.get_max_angular_acceleration();
+    let new_dampen_angular_velocity = if turn_direction == 0 {
+        *config.get_max_angular_acceleration()
+    } else {
+        0.0
+    };
 
     // 4. Update input state and movement
     space_ship.input_state.turn_direction = turn_direction;
@@ -489,6 +502,8 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         last_update_time: now,
         max_speed: *config.get_max_speed(),
         max_turn_rate: *config.get_max_turn_rate(),
+        dampen_forward_velocity: space_ship.movement.dampen_forward_velocity,
+        dampen_angular_velocity: new_dampen_angular_velocity,
     };
 
     dsl.update_space_ship_by_id(space_ship)?;

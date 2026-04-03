@@ -4,6 +4,7 @@ use spacetimedsl::*;
 use crate::physics;
 
 #[derive(SpacetimeType, Clone, Debug, PartialEq)]
+#[repr(u8)]
 pub enum VisitedStatus {
     /// The player has not visited this system or sector.
     Unvisited,
