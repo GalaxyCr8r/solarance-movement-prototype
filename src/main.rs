@@ -15,6 +15,11 @@ mod gui_side_panel;
 mod render;
 mod ships;
 use ships::*;
+mod bullets;
+use bullets::*;
+
+use crate::utilities::get_server_time;
+mod utilities;
 
 pub struct GameState<'a> {
     // Game-Wide States
@@ -69,11 +74,14 @@ async fn main() -> Result<(), macroquad::Error> {
     game_state.bg_camera.zoom.y *= -1.0;
 
     let ship_manager = ShipManager::new();
+    let bullet_manager = BulletManager::new();
 
     let mut side_panel_rect = egui::Rect::ZERO;
 
     loop {
         ship_manager.sync_from_db(&game_state.ctx.db);
+        bullet_manager.sync_from_db(&game_state.ctx.db);
+        bullet_manager.check_collisions(&ship_manager, game_state.ctx);
         clear_background(BLACK);
 
         // Focus camera on current target (usually the player's ship)
@@ -85,6 +93,7 @@ async fn main() -> Result<(), macroquad::Error> {
 
         // Render ships with synchronized server time
         ship_manager.render();
+        bullet_manager.render();
 
         egui_macroquad::ui(|egui_ctx| {
             side_panel_rect = gui_side_panel::draw_side_panel_contents(egui_ctx, &game_state.ctx);
@@ -129,6 +138,13 @@ fn handle_input(ctx: &DbConnection) {
     //         None => return,
     //     }
     // };
+
+    if is_key_pressed(KeyCode::Space) {
+        let result = ctx.reducers().fire_weapons(get_server_time(0));
+        if let Err(e) = result {
+            println!("Error firing weapon: {}", e);
+        }
+    }
 
     // Determine current input state from keyboard
     let is_thrusting = is_key_down(KeyCode::W) || is_key_down(KeyCode::Up);

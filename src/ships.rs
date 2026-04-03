@@ -1,4 +1,5 @@
 use macroquad::color::WHITE;
+use macroquad::shapes::draw_line;
 use macroquad::text::draw_text;
 use solarance_shared::physics;
 use spacetimedb_sdk::*;
@@ -7,30 +8,13 @@ use std::sync::{Arc, RwLock};
 
 use crate::module_bindings::*;
 use crate::render::draw_ship;
-
-/// Convert from generated bindings MovementState to shared physics MovementState
-fn convert_movement_state(state: &crate::module_bindings::MovementState) -> physics::MovementState {
-    physics::MovementState {
-        pos: physics::Vec2 {
-            x: state.pos.x,
-            y: state.pos.y,
-        },
-        velocity: state.velocity,
-        rotation: state.rotation,
-        angular_velocity: state.angular_velocity,
-        last_update_time: state.last_update_time,
-        acceleration: state.acceleration,
-        angular_acceleration: state.angular_acceleration,
-        max_speed: state.max_speed,
-        max_turn_rate: state.max_turn_rate,
-    }
-}
+use crate::utilities::*;
 
 /// Client-side ship data with dead reckoning support
 #[derive(Clone, Debug)]
 pub struct ClientShip {
-    pub entity_id: Identity,
-    pub ship_config_id: u32,
+    pub entity_id: u64,
+    pub state: SpaceShip,
     pub movement: physics::MovementState,
 }
 
@@ -41,71 +25,35 @@ impl ClientShip {
     }
 }
 
-/// Clock synchronization with server
-#[derive(Clone, Debug)]
-pub struct ClockSync {
-    server_offset_micros: i64, // server_time - client_time
-}
-
-impl ClockSync {
-    pub fn new() -> Self {
-        Self {
-            server_offset_micros: 0,
-        }
-    }
-
-    /// Update offset based on server timestamp
-    /// Possibly deprecrated because it seems like "client_time" is rather accurate enough...
-    pub fn update_from_server(&mut self, server_time_micros: i64) {
-        let client_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_micros() as i64;
-
-        self.server_offset_micros = server_time_micros - client_time;
-    }
-
-    /// Get current server time estimate
-    pub fn get_server_time(&self) -> i64 {
-        let client_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_micros() as i64;
-
-        client_time + self.server_offset_micros
-    }
-}
-
 /// Thread-safe ship manager for dead reckoning
 #[derive(Clone)]
 pub struct ShipManager {
-    ships: Arc<RwLock<HashMap<Identity, ClientShip>>>,
-    clock_sync: Arc<RwLock<ClockSync>>,
+    ships: Arc<RwLock<HashMap<u64, ClientShip>>>,
+    server_offset_micros: i64, // server_time - client_time
 }
 
 impl ShipManager {
     pub fn new() -> Self {
         Self {
             ships: Arc::new(RwLock::new(HashMap::new())),
-            clock_sync: Arc::new(RwLock::new(ClockSync::new())),
+            server_offset_micros: 0,
         }
     }
 
     /// Sync ships from SpacetimeDB tables
     pub fn sync_from_db(&self, db: &RemoteTables) {
         let mut ships = self.ships.write().unwrap();
-        let mut clock_sync = self.clock_sync.write().unwrap();
 
         // Get current ships from database
-        let db_ships: HashMap<Identity, ClientShip> = db
+        let db_ships: HashMap<u64, ClientShip> = db
             .current_sector_ships()
             .iter()
             .map(|ship| {
                 (
-                    ship.entity_id,
+                    ship.id,
                     ClientShip {
-                        entity_id: ship.entity_id,
-                        ship_config_id: ship.ship_config_id,
+                        entity_id: ship.id,
+                        state: ship.clone(),
                         movement: convert_movement_state(&ship.movement),
                     },
                 )
@@ -123,29 +71,39 @@ impl ShipManager {
 
     pub fn render(&self) {
         let ships = self.ships.read().unwrap();
-        let clock_sync = self.clock_sync.read().unwrap();
-        let current_time_micros = clock_sync.get_server_time();
+        let current_time_micros = get_server_time(self.server_offset_micros);
 
         for (_eid, ship) in ships.iter() {
             let (pos, rotation) = ship.predict_current(current_time_micros);
+            draw_line(pos.x - 16.0, pos.y, pos.x + 16.0, pos.y, 2.0, WHITE);
+            draw_line(pos.x, pos.y - 16.0, pos.x, pos.y + 16.0, 2.0, WHITE);
+
             draw_ship(pos.x, pos.y, rotation.to_radians());
+
             draw_text(
-                &format!(
-                    "{}",
-                    (current_time_micros - ship.movement.last_update_time) / 1_000
-                ),
-                pos.x,
-                pos.y,
+                &format!("Hull: {}", ship.state.health),
+                pos.x - 32.0,
+                pos.y - 32.0,
                 20.0,
                 WHITE,
             );
-            draw_text(
-                &format!("{}", ship.movement.angular_velocity),
-                pos.x,
-                pos.y - 20.0,
-                20.0,
-                WHITE,
-            );
+            // draw_text(
+            //     &format!(
+            //         "{}",
+            //         (current_time_micros - ship.movement.last_update_time) / 1_000
+            //     ),
+            //     pos.x,
+            //     pos.y,
+            //     20.0,
+            //     WHITE,
+            // );
+            // draw_text(
+            //     &format!("{}", ship.movement.angular_velocity),
+            //     pos.x,
+            //     pos.y - 20.0,
+            //     20.0,
+            //     WHITE,
+            // );
         }
     }
 
@@ -153,17 +111,17 @@ impl ShipManager {
     pub fn upsert_ship(&self, ship: SpaceShip) {
         let mut ships = self.ships.write().unwrap();
         ships.insert(
-            ship.entity_id,
+            ship.id,
             ClientShip {
-                entity_id: ship.entity_id,
-                ship_config_id: ship.ship_config_id,
+                entity_id: ship.id,
+                state: ship.clone(),
                 movement: convert_movement_state(&ship.movement),
             },
         );
     }
 
     /// Remove a ship by entity ID
-    pub fn remove_ship(&self, entity_id: &Identity) {
+    pub fn remove_ship(&self, entity_id: &u64) {
         let mut ships = self.ships.write().unwrap();
         ships.remove(entity_id);
     }
@@ -175,7 +133,7 @@ impl ShipManager {
     }
 
     /// Get a specific ship by entity ID
-    pub fn get_ship(&self, entity_id: &Identity) -> Option<ClientShip> {
+    pub fn get_ship(&self, entity_id: &u64) -> Option<ClientShip> {
         let ships = self.ships.read().unwrap();
         ships.get(entity_id).cloned()
     }

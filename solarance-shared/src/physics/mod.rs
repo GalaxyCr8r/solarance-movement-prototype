@@ -4,6 +4,15 @@ pub struct Vec2 {
     pub y: f32,
 }
 
+impl Vec2 {
+    pub fn distance_to(&self, other: &Vec2) -> f32 {
+        ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
+    }
+    pub fn distance_to_sq(&self, other: &Vec2) -> f32 {
+        (self.x - other.x).powi(2) + (self.y - other.y).powi(2)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct MovementState {
     pub pos: Vec2,
@@ -27,6 +36,8 @@ pub struct MovementState {
 
 /// Shared logic to calculate the current position and rotation based on elapsed time.
 ///
+/// Returns the new position and rotation in degrees.
+///
 /// When the ship is turning (`angular_velocity != 0`) while moving, the position
 /// is computed by integrating along the arc the ship traces, rather than projecting
 /// in a straight line from the initial heading. This produces smooth, curved
@@ -48,7 +59,7 @@ pub fn predict_movement(state: &MovementState, current_time: i64) -> (Vec2, f32)
 }
 
 fn calculate_new_rotation(state: &MovementState, dt: f32, unclamped_angular_velocity: f32) -> f32 {
-    let mut new_rotation = if state.angular_acceleration.abs() < f32::EPSILON {
+    let mut new_rotation_degrees = if state.angular_acceleration.abs() < f32::EPSILON {
         // No angular acceleration: constant angular velocity
         state.rotation + (state.angular_velocity * dt)
     } else {
@@ -57,12 +68,12 @@ fn calculate_new_rotation(state: &MovementState, dt: f32, unclamped_angular_velo
     };
 
     // Keep rotation in 0-360 range
-    new_rotation %= 360.0;
-    if new_rotation < 0.0 {
-        new_rotation += 360.0;
+    new_rotation_degrees %= 360.0;
+    if new_rotation_degrees < 0.0 {
+        new_rotation_degrees += 360.0;
     }
 
-    new_rotation
+    new_rotation_degrees
 }
 
 fn calculate_accelerated_rotation(
