@@ -8,12 +8,12 @@ This module does not implement a full social media platform, but rather the bare
 
 ### Core Entities (Tables)
 
-We envision the following minimal set of tables (`#[spacetimedb(table)]`):
+We envision the following minimal set of tables (`#[table]`):
 
 1. **`Category`**: High-level organizational buckets for discussions (e.g., "Announcements", "General", "Help").
 2. **`Thread`**: A specific topic inside a Category, created by a user, which holds multiple posts.
 3. **`Post`**: The individual replies (or the initial message) inside a Thread.
-4. **`ForumUser`**: A basic user profile tied to a SpacetimeDB Identity, optionally including a display name, signature, role (e.g., `Admin`, `Moderator`, `User`, or `Banned`), timestamp for last "Mark All As Read", and a `Vec` of their group IDs.
+4. **`ForumUser`**: A basic user profile tied to a SpacetimeDB Identity, optionally including a display name, signature, role (e.g., `Admin`, `Moderator`, `User`, or `Banned`), last "Mark All As Read" timestamp, and a `Vec` of their group IDs.
 5. **`ModerationLog`**: A record of actions taken by moderators (e.g., who banned whom and why).
 
 #### Enums
@@ -44,6 +44,43 @@ enum ForumRole {
     User,
     /// Can only view public categories and threads, and cannot post.
     Banned,
+}
+```
+
+### Derived Entities (View Return Types)
+
+When returning data through SpacetimeDB Views, it is highly recommended to construct bespoke `SpacetimeType` structs that aggregate data to avoid N+1 querying on the client. 
+
+Here are some suggested derived entities for the forum:
+
+```rust
+#[derive(SpacetimeType, Clone, Debug, PartialEq)]
+pub struct CategoryPreview {
+    pub category: Category,
+    /// Total number of threads inside this category.
+    pub thread_count: u32,
+    /// The timestamp of the most recent post inside this category.
+    pub latest_post_timestamp: Option<Timestamp>,
+}
+
+#[derive(SpacetimeType, Clone, Debug, PartialEq)]
+pub struct ThreadPreview {
+    pub thread: Thread,
+    /// The display name of the ForumUser who created the thread.
+    pub author_display_name: String,
+    /// Number of replies to the original post.
+    pub reply_count: u32,
+    /// Timestamp of the latest reply.
+    pub latest_post_timestamp: Option<Timestamp>,
+    /// Pre-calculated based on comparing the latest_post_timestamp to the ForumUser's mark_all_as_read.
+    pub is_unread: bool,
+}
+
+#[derive(SpacetimeType, Clone, Debug, PartialEq)]
+pub struct PostWithAuthor {
+    pub post: Post,
+    /// Complete user profile to fetch display name, signature, and role without a secondary query.
+    pub author: ForumUser,
 }
 ```
 
@@ -84,7 +121,9 @@ To manipulate the state, the module will expose reducers such as:
     *   `set_user_signature(user_identity: Identity, signature: String, reason: String)`: Set a user's signature.
     *   `set_user_role(user_identity: Identity, role: ForumRole, reason: String)`: Set a user's role.
 
-### Key Views (Queries)
+### Key Views (Server-Side Meta-tables)
+
+*Note: In SpacetimeDB, reducers do not return data. Instead, clients subscribe to the relevant tables and perform these queries against their local in-memory cache. The following are examples of how the server can expose data per use via non-anonymous ViewContexts.*
 
 *   `get_categories()`: Returns all categories that are public or that the user has access to.
 *   `get_threads(category_id: u64)`: Returns all threads in a category that are public or that the user has access to.
@@ -92,6 +131,14 @@ To manipulate the state, the module will expose reducers such as:
 *   `get_moderation_log()`: Returns all moderation actions. Only for admins and moderators.
 *   `get_my_profile()`: Returns the current user's profile.
 *   `get_my_groups()`: Returns all groups that the current user is a member of.
+
+#### Anonymous Views
+
+Some views can be exposed to the public, such as public categories and threads. These views will be available to all users, regardless of their role.
+
+*   `get_public_categories()`: Returns all categories that are public.
+*   `get_public_threads(category_id: u64)`: Returns all threads in a category that are public.
+*   `get_public_posts(thread_id: u64)`: Returns all posts in a thread that are public.
 
 ## Usage
 
