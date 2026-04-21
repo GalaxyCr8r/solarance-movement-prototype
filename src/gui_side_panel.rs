@@ -1,10 +1,10 @@
-use egui::*;
+use egui_macroquad::egui::*;
 use spacetimedb_sdk::*;
 
 use crate::module_bindings::*;
 
 pub fn draw_side_panel_contents(egui_ctx: &Context, client: &DbConnection) -> Rect {
-    egui::SidePanel::left("left_panel")
+    SidePanel::left("left_panel")
         .show(egui_ctx, |ui| {
             ui.heading("Solarance:Beginnings");
             ui.separator();
