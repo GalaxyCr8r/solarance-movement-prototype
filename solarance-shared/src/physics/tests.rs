@@ -29,7 +29,7 @@ const ONE_SECOND: i64 = 1_000_000; // 1 second in microseconds
 fn straight_line_no_regression() {
     // Ship at origin heading 0° (east along +x in standard trig) with velocity 100 px/s
     let state = make_state(0.0, 0.0, 100.0, 0.0, 0.0, BASE_TIME);
-    let (pos, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (pos, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
 
     assert!(
         (pos.x - 100.0).abs() < 0.01,
@@ -48,7 +48,7 @@ fn straight_line_no_regression() {
 fn stationary_ship_rotation_only() {
     // Ship not moving but rotating at 90 deg/s for 1 second
     let state = make_state(5.0, 10.0, 0.0, 0.0, 90.0, BASE_TIME);
-    let (pos, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (pos, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
 
     assert!(
         (pos.x - 5.0).abs() < 0.01,
@@ -73,7 +73,7 @@ fn quarter_turn_arc() {
     // After 1 second it has turned to 90° and should be at approximately
     // the analytically-computed arc position.
     let state = make_state(0.0, 0.0, 100.0, 0.0, 90.0, BASE_TIME);
-    let (pos, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (pos, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
 
     // Analytical: r = v/ω = 100 / (π/2) ≈ 63.66
     // x = r * (sin(π/2) - sin(0)) = r * 1 ≈ 63.66
@@ -95,7 +95,7 @@ fn full_circle_returns_near_origin() {
     // Ship at origin, heading 0°, speed 100, turning at 360°/s.
     // After 1 second it completes a full circle and should be back near the origin.
     let state = make_state(0.0, 0.0, 100.0, 0.0, 360.0, BASE_TIME);
-    let (pos, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (pos, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
 
     assert!(
         pos.x.abs() < 0.5,
@@ -119,7 +119,7 @@ fn full_circle_returns_near_origin() {
 fn negative_angular_velocity() {
     // Same as quarter turn but turning left (negative angular velocity)
     let state = make_state(0.0, 0.0, 100.0, 0.0, -90.0, BASE_TIME);
-    let (pos, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (pos, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
 
     let omega_rad = std::f32::consts::FRAC_PI_2;
     let r = 100.0 / omega_rad;
@@ -142,12 +142,12 @@ fn negative_angular_velocity() {
 #[test]
 fn no_movement_when_time_not_advanced() {
     let state = make_state(10.0, 20.0, 50.0, 45.0, 30.0, 100);
-    let (pos, rot) = predict_movement(&state, 100); // same time
+    let (pos, rot, ..) = predict_movement(&state, 100); // same time
     assert!((pos.x - 10.0).abs() < 0.001);
     assert!((pos.y - 20.0).abs() < 0.001);
     assert!((rot - 45.0).abs() < 0.001);
 
-    let (pos2, rot2) = predict_movement(&state, 50); // earlier time
+    let (pos2, rot2, ..) = predict_movement(&state, 50); // earlier time
     assert!((pos2.x - 10.0).abs() < 0.001);
     assert!((pos2.y - 20.0).abs() < 0.001);
     assert!((rot2 - 45.0).abs() < 0.001);
@@ -162,7 +162,7 @@ fn dampening_stops_rotation_within_step() {
     let mut state = make_state(0.0, 0.0, 0.0, 0.0, 45.0, BASE_TIME);
     state.dampen_angular_rotation = true;
 
-    let (_, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (_, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
     assert!(
         (rot - 11.25).abs() < 0.01,
         "rotation should be ~11.25° after dampening stop, got {}",
@@ -178,7 +178,7 @@ fn dampening_partial_deceleration_within_step() {
     let mut state = make_state(0.0, 0.0, 0.0, 0.0, 180.0, BASE_TIME);
     state.dampen_angular_rotation = true;
 
-    let (_, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (_, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
     assert!(
         (rot - 135.0).abs() < 0.01,
         "rotation should be ~135° after partial dampening, got {}",
@@ -193,7 +193,7 @@ fn dampening_negative_angular_velocity_clamps_at_zero() {
     let mut state = make_state(0.0, 0.0, 0.0, 0.0, -45.0, BASE_TIME);
     state.dampen_angular_rotation = true;
 
-    let (_, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (_, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
     assert!(
         (rot - 348.75).abs() < 0.01,
         "rotation should be ~348.75° after negative dampening stop, got {}",
@@ -205,7 +205,7 @@ fn dampening_negative_angular_velocity_clamps_at_zero() {
 fn dampening_off_does_not_affect_rotation() {
     // With dampening off, angular_velocity of 45 °/s for 1 s → 45°
     let state = make_state(0.0, 0.0, 0.0, 0.0, 45.0, BASE_TIME);
-    let (_, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (_, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
     assert!(
         (rot - 45.0).abs() < 0.01,
         "rotation without dampening should be ~45°, got {}",
@@ -223,7 +223,7 @@ fn dampening_arc_position_stops_curving() {
     let mut state = make_state(0.0, 0.0, 100.0, 0.0, 45.0, BASE_TIME);
     state.dampen_angular_rotation = true;
 
-    let (pos, rot) = predict_movement(&state, BASE_TIME + ONE_SECOND);
+    let (pos, rot, ..) = predict_movement(&state, BASE_TIME + ONE_SECOND);
 
     // After 1 second the ship must have stopped spinning
     assert!(

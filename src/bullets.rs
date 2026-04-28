@@ -18,7 +18,8 @@ pub struct ClientBullet {
 impl ClientBullet {
     /// Calculate current position and rotation based on elapsed time
     pub fn predict_current(&self, current_time_micros: i64) -> (physics::Vec2, f32) {
-        physics::predict_movement(&self.movement, current_time_micros)
+        let (pos, rot, _, _) = physics::predict_movement(&self.movement, current_time_micros);
+        (pos, rot)
     }
 }
 

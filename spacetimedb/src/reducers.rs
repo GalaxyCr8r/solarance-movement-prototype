@@ -78,7 +78,8 @@ pub fn fire_weapons(ctx: &ReducerContext, fired_at: i64) -> Result<(), String> {
     let (ship_pos, ship_rot) = if fired_at < space_ship.movement.last_update_time {
         (ship_movement.pos, ship_movement.rotation)
     } else {
-        predict_movement(&ship_movement, fired_at)
+        let (p, r, _, _) = predict_movement(&ship_movement, fired_at);
+        (p, r)
     };
 
     // Verify that this isn't firing too soon
@@ -281,7 +282,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
     }
 
     // 2. Synchronize current position BEFORE changing trajectory
-    let (current_pos, current_rot) = predict_movement(
+    let (current_pos, current_rot, _, _) = predict_movement(
         &convert_to_movement_state(&space_ship.movement),
         ctx.timestamp.to_micros_since_unix_epoch(),
     );
@@ -332,7 +333,7 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
     }
 
     // 2. Synchronize current position/rotation
-    let (current_pos, current_rot) = predict_movement(
+    let (current_pos, current_rot, _, _) = predict_movement(
         &convert_to_movement_state(&space_ship.movement),
         ctx.timestamp.to_micros_since_unix_epoch(),
     );
@@ -392,19 +393,12 @@ pub fn set_thrust_input(
         .map_err(|_| "Ship config not found")?;
 
     let now = ctx.timestamp.to_micros_since_unix_epoch();
-    let dt = (now - space_ship.movement.last_update_time) as f32 / 1_000_000.0;
 
-    // 1. Predict current position and rotation
-    let (predicted_pos, predicted_rot) =
+    // 1. Predict current position, rotation, and velocities from the unified simulation.
+    let (predicted_pos, predicted_rot, predicted_velocity, predicted_angular_velocity) =
         predict_movement(&convert_to_movement_state(&space_ship.movement), now);
 
-    // 2. Calculate predicted velocities, accounting for dampening
-    let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
-        .clamp(0.0, *config.get_max_speed());
-    let predicted_angular_velocity =
-        predict_angular_velocity(&space_ship.movement, dt);
-
-    // 3. Calculate new acceleration based on thrust input
+    // 2. Calculate new acceleration based on thrust input
     let new_acceleration = if is_thrusting {
         *config.get_max_acceleration()
     } else if is_breaking {
@@ -462,19 +456,12 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         .map_err(|_| "Ship config not found")?;
 
     let now = ctx.timestamp.to_micros_since_unix_epoch();
-    let dt = (now - space_ship.movement.last_update_time) as f32 / 1_000_000.0;
 
-    // 1. Predict current position and rotation
-    let (predicted_pos, predicted_rot) =
+    // 1. Predict current position, rotation, and velocities from the unified simulation.
+    let (predicted_pos, predicted_rot, predicted_velocity, predicted_angular_velocity) =
         predict_movement(&convert_to_movement_state(&space_ship.movement), now);
 
-    // 2. Calculate predicted velocities, accounting for dampening
-    let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
-        .clamp(0.0, *config.get_max_speed());
-    let predicted_angular_velocity =
-        predict_angular_velocity(&space_ship.movement, dt);
-
-    // 3. Calculate new angular acceleration based on turn direction
+    // 2. Calculate new angular acceleration based on turn direction
     let new_angular_acceleration = turn_direction as f32 * *config.get_max_angular_acceleration();
 
     // 4. Update input state and movement

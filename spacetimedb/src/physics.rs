@@ -57,26 +57,6 @@ pub fn convert_to_movement_state(
     }
 }
 
-/// Computes the angular velocity at `now`, accounting for both angular acceleration
-/// and dampening. Mirrors the logic in `solarance_shared` so the server advances
-/// state identically to clients before writing a new trajectory.
-pub fn predict_angular_velocity(state: &MovementState, dt: f32) -> f32 {
-    if state.angular_acceleration.abs() > f32::EPSILON {
-        (state.angular_velocity + state.angular_acceleration * dt)
-            .clamp(-state.max_turn_rate, state.max_turn_rate)
-    } else if state.dampen_angular_rotation && state.angular_velocity.abs() > f32::EPSILON {
-        let decel_rate = state.max_turn_rate / 2.0;
-        let t_stop = state.angular_velocity.abs() / decel_rate;
-        if t_stop <= dt {
-            0.0
-        } else {
-            state.angular_velocity - state.angular_velocity.signum() * decel_rate * dt
-        }
-    } else {
-        state.angular_velocity
-    }
-}
-
 pub fn convert_from_movement_state(
     state: &solarance_shared::physics::MovementState,
 ) -> MovementState {
