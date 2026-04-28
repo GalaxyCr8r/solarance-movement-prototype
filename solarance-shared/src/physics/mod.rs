@@ -32,6 +32,9 @@ pub struct MovementState {
     pub max_speed: f32,
     /// Degrees per second (angular velocity cap)
     pub max_turn_rate: f32,
+    /// When true and angular_acceleration is zero, bleeds angular_velocity toward zero
+    /// at max_turn_rate / 2 degrees per second squared.
+    pub dampen_angular_rotation: bool,
 }
 
 /// Shared logic to calculate the current position and rotation based on elapsed time.
@@ -60,8 +63,12 @@ pub fn predict_movement(state: &MovementState, current_time: i64) -> (Vec2, f32)
 
 fn calculate_new_rotation(state: &MovementState, dt: f32, unclamped_angular_velocity: f32) -> f32 {
     let mut new_rotation_degrees = if state.angular_acceleration.abs() < f32::EPSILON {
-        // No angular acceleration: constant angular velocity
-        state.rotation + (state.angular_velocity * dt)
+        if state.dampen_angular_rotation && state.angular_velocity.abs() > f32::EPSILON {
+            calculate_dampened_rotation(state, dt)
+        } else {
+            // No angular acceleration: constant angular velocity
+            state.rotation + (state.angular_velocity * dt)
+        }
     } else {
         // Angular acceleration with potential clamping
         calculate_accelerated_rotation(state, dt, unclamped_angular_velocity)
@@ -74,6 +81,20 @@ fn calculate_new_rotation(state: &MovementState, dt: f32, unclamped_angular_velo
     }
 
     new_rotation_degrees
+}
+
+fn calculate_dampened_rotation(state: &MovementState, dt: f32) -> f32 {
+    let decel_rate = state.max_turn_rate / 2.0;
+    let t_stop = state.angular_velocity.abs() / decel_rate;
+
+    if t_stop >= dt {
+        // Doesn't reach zero this step: apply kinematic braking for full dt
+        let sig = state.angular_velocity.signum();
+        state.rotation + state.angular_velocity * dt - 0.5 * sig * decel_rate * dt * dt
+    } else {
+        // Crosses zero mid-step: rotate up to the stop point, then hold
+        state.rotation + 0.5 * state.angular_velocity * t_stop
+    }
 }
 
 fn calculate_accelerated_rotation(
@@ -185,11 +206,17 @@ fn calculate_accelerated_displacement(
 }
 
 fn calculate_arc_position(state: &MovementState, dt: f32) -> Vec2 {
-    if state.acceleration.abs() < f32::EPSILON && state.angular_acceleration.abs() < f32::EPSILON {
-        // No acceleration: use analytical arc motion formula
+    let dampening_active =
+        state.dampen_angular_rotation && state.angular_velocity.abs() > f32::EPSILON;
+
+    if state.acceleration.abs() < f32::EPSILON
+        && state.angular_acceleration.abs() < f32::EPSILON
+        && !dampening_active
+    {
+        // No acceleration of any kind: use analytical arc motion formula
         calculate_no_acceleration_arc_position(state, dt)
     } else {
-        // Combined acceleration and turning: use numerical integration
+        // Acceleration or dampening present: use numerical integration
         calculate_integrated_arc_position(state, dt)
     }
 }
@@ -232,7 +259,6 @@ fn calculate_integrated_arc_position(state: &MovementState, dt: f32) -> Vec2 {
 
         // Update velocity and angular velocity based on acceleration
         v += a * step_dt;
-        omega += alpha * step_dt;
 
         // Clamp velocity if needed
         if v > state.max_speed {
@@ -241,18 +267,33 @@ fn calculate_integrated_arc_position(state: &MovementState, dt: f32) -> Vec2 {
             v = 0.0;
         }
 
-        // Clamp angular velocity if needed
-        if omega > max_omega {
-            omega = max_omega;
-        } else if omega < -max_omega {
-            omega = -max_omega;
+        // Update angular velocity: dampening or normal acceleration
+        if state.dampen_angular_rotation && alpha.abs() < f32::EPSILON {
+            let decel_rad = (state.max_turn_rate / 2.0).to_radians();
+            let domega = -omega.signum() * decel_rad * step_dt;
+            if domega.abs() >= omega.abs() {
+                omega = 0.0;
+            } else {
+                omega += domega;
+            }
+        } else {
+            omega += alpha * step_dt;
+            if omega > max_omega {
+                omega = max_omega;
+            } else if omega < -max_omega {
+                omega = -max_omega;
+            }
         }
 
-        // Check if both velocity and angular velocity are clamped (no more acceleration)
+        // Check if both velocity and angular velocity are clamped (no more change)
         let v_clamped =
             (v == state.max_speed || v == 0.0) && (prev_v == v || a.abs() > f32::EPSILON);
-        let omega_clamped = (omega == max_omega || omega == -max_omega)
-            && (prev_omega == omega || alpha.abs() > f32::EPSILON);
+        let omega_clamped = if state.dampen_angular_rotation && alpha.abs() < f32::EPSILON {
+            omega == 0.0
+        } else {
+            (omega == max_omega || omega == -max_omega)
+                && (prev_omega == omega || alpha.abs() > f32::EPSILON)
+        };
 
         if v_clamped && omega_clamped {
             // Both are clamped - switch to analytical arc formula for remaining time

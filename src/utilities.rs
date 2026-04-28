@@ -28,5 +28,6 @@ pub fn convert_movement_state(
         angular_acceleration: state.angular_acceleration,
         max_speed: state.max_speed,
         max_turn_rate: state.max_turn_rate,
+        dampen_angular_rotation: state.dampen_angular_rotation,
     }
 }

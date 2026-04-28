@@ -31,6 +31,7 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
                 angular_acceleration: 0.0,
                 max_speed: *config.get_max_speed(),
                 max_turn_rate: *config.get_max_turn_rate(),
+                dampen_angular_rotation: true,
             },
             input_state: InputState {
                 is_thrusting: false,
@@ -112,6 +113,7 @@ pub fn fire_weapons(ctx: &ReducerContext, fired_at: i64) -> Result<(), String> {
             angular_acceleration: 0.0,
             max_speed: 500.0,
             max_turn_rate: 0.0,
+            dampen_angular_rotation: true,
         },
     })?;
 
@@ -298,6 +300,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
         angular_acceleration: space_ship.movement.angular_acceleration,
         max_speed: space_ship.movement.max_speed,
         max_turn_rate: space_ship.movement.max_turn_rate,
+        dampen_angular_rotation: space_ship.movement.dampen_angular_rotation,
     };
 
     // 4. Update Database
@@ -348,6 +351,7 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
         angular_acceleration: space_ship.movement.angular_acceleration,
         max_speed: space_ship.movement.max_speed,
         max_turn_rate: space_ship.movement.max_turn_rate,
+        dampen_angular_rotation: space_ship.movement.dampen_angular_rotation,
     };
 
     dsl.update_space_ship_by_id(space_ship);
@@ -394,12 +398,11 @@ pub fn set_thrust_input(
     let (predicted_pos, predicted_rot) =
         predict_movement(&convert_to_movement_state(&space_ship.movement), now);
 
-    // 2. Calculate predicted velocities: v = v₀ + a*dt, clamped
+    // 2. Calculate predicted velocities, accounting for dampening
     let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
         .clamp(0.0, *config.get_max_speed());
-    let predicted_angular_velocity = (space_ship.movement.angular_velocity
-        + space_ship.movement.angular_acceleration * dt)
-        .clamp(-*config.get_max_turn_rate(), *config.get_max_turn_rate());
+    let predicted_angular_velocity =
+        predict_angular_velocity(&space_ship.movement, dt);
 
     // 3. Calculate new acceleration based on thrust input
     let new_acceleration = if is_thrusting {
@@ -426,6 +429,7 @@ pub fn set_thrust_input(
         last_update_time: now,
         max_speed: *config.get_max_speed(),
         max_turn_rate: *config.get_max_turn_rate(),
+        dampen_angular_rotation: true,
     };
 
     dsl.update_space_ship_by_id(space_ship);
@@ -464,12 +468,11 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
     let (predicted_pos, predicted_rot) =
         predict_movement(&convert_to_movement_state(&space_ship.movement), now);
 
-    // 2. Calculate predicted velocities: v = v₀ + a*dt, clamped
+    // 2. Calculate predicted velocities, accounting for dampening
     let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
         .clamp(0.0, *config.get_max_speed());
-    let predicted_angular_velocity = (space_ship.movement.angular_velocity
-        + space_ship.movement.angular_acceleration * dt)
-        .clamp(-*config.get_max_turn_rate(), *config.get_max_turn_rate());
+    let predicted_angular_velocity =
+        predict_angular_velocity(&space_ship.movement, dt);
 
     // 3. Calculate new angular acceleration based on turn direction
     let new_angular_acceleration = turn_direction as f32 * *config.get_max_angular_acceleration();
@@ -489,6 +492,7 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         last_update_time: now,
         max_speed: *config.get_max_speed(),
         max_turn_rate: *config.get_max_turn_rate(),
+        dampen_angular_rotation: true,
     };
 
     dsl.update_space_ship_by_id(space_ship)?;

@@ -32,6 +32,9 @@ pub struct MovementState {
     pub max_speed: f32,
     /// Degrees per second (angular velocity cap)
     pub max_turn_rate: f32,
+    /// When true and angular_acceleration is zero, bleeds angular_velocity toward zero
+    /// at max_turn_rate / 2 degrees per second squared.
+    pub dampen_angular_rotation: bool,
 }
 
 pub fn convert_to_movement_state(
@@ -50,6 +53,27 @@ pub fn convert_to_movement_state(
         angular_acceleration: state.angular_acceleration,
         max_speed: state.max_speed,
         max_turn_rate: state.max_turn_rate,
+        dampen_angular_rotation: state.dampen_angular_rotation,
+    }
+}
+
+/// Computes the angular velocity at `now`, accounting for both angular acceleration
+/// and dampening. Mirrors the logic in `solarance_shared` so the server advances
+/// state identically to clients before writing a new trajectory.
+pub fn predict_angular_velocity(state: &MovementState, dt: f32) -> f32 {
+    if state.angular_acceleration.abs() > f32::EPSILON {
+        (state.angular_velocity + state.angular_acceleration * dt)
+            .clamp(-state.max_turn_rate, state.max_turn_rate)
+    } else if state.dampen_angular_rotation && state.angular_velocity.abs() > f32::EPSILON {
+        let decel_rate = state.max_turn_rate / 2.0;
+        let t_stop = state.angular_velocity.abs() / decel_rate;
+        if t_stop <= dt {
+            0.0
+        } else {
+            state.angular_velocity - state.angular_velocity.signum() * decel_rate * dt
+        }
+    } else {
+        state.angular_velocity
     }
 }
 
@@ -69,5 +93,6 @@ pub fn convert_from_movement_state(
         angular_acceleration: state.angular_acceleration,
         max_speed: state.max_speed,
         max_turn_rate: state.max_turn_rate,
+        dampen_angular_rotation: state.dampen_angular_rotation,
     }
 }
