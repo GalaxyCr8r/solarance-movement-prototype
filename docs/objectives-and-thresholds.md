@@ -1,5 +1,7 @@
 # Solarance Movement Prototype: Objectives and Thresholds
 
+NOTE: This document was created at the beginning of the repo. The goals have changed after `docs/Solarance_Beginnings_MVP_Design_Doc.md` was created. 
+
 > Plans never survive contact with the enemy, but you won't survive contact with the enemy without plans.
 >
 > - Anonymous
