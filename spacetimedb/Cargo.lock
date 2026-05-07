@@ -802,9 +802,9 @@ dependencies = [
 
 [[package]]
 name = "spacetimedsl"
-version = "0.20.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77eeec818913a8f9e8473ede1f9df5deacdcb588ed4ac92f2432ffff49d5c36a"
+checksum = "f22fd64055e393c9bda63a9eabc1328f26c4a5ed298efeddc602d66e1009205d"
 dependencies = [
  "itertools 0.14.0",
  "spacetimedb",
@@ -813,9 +813,9 @@ dependencies = [
 
 [[package]]
 name = "spacetimedsl_derive"
-version = "0.20.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "beb753e1b24e5e925325cb0d69f9d117f19d5001496dbeabfe34ef3be0bdda2c"
+checksum = "dd5d766f913e0314b5e3ad12a71078de995a12ce908f81b453c89ee83e1207d9"
 dependencies = [
  "ident_case",
  "proc-macro2",
@@ -827,9 +827,9 @@ dependencies = [
 
 [[package]]
 name = "spacetimedsl_derive-input"
-version = "0.20.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2ebeb2e787fce17b3aa013446fd6cc684a672e8353b9314050baf57d8aac616"
+checksum = "2a6524c1d19f79cc77b895a41af582000d0d41432ecce3bca4b57f13e2bbb76c"
 dependencies = [
  "ident_case",
  "itertools 0.14.0",

@@ -8,4 +8,3 @@ spacetimedb-sdk = { version = "2.1.0" }
 solarance-shared = { path = "solarance-shared" }
 egui-macroquad = "0.17.3"
 macroquad = "0.4.14"
-egui = "0.31.1"

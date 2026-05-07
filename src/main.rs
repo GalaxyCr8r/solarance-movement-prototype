@@ -76,7 +76,7 @@ async fn main() -> Result<(), macroquad::Error> {
     let ship_manager = ShipManager::new();
     let bullet_manager = BulletManager::new();
 
-    let mut side_panel_rect = egui::Rect::ZERO;
+    let mut side_panel_rect = egui_macroquad::egui::Rect::ZERO;
 
     loop {
         ship_manager.sync_from_db(&game_state.ctx.db);
