@@ -3,12 +3,14 @@ use std::collections::HashMap;
 
 pub struct Resources {
     pub ship_textures: HashMap<&'static str, Texture2D>,
+    pub bullet_textures: HashMap<&'static str, Texture2D>,
 }
 
 impl Resources {
     pub async fn new() -> Result<Resources, macroquad::Error> {
         let mut resources = Resources {
             ship_textures: HashMap::new(),
+            bullet_textures: HashMap::new(),
         };
 
         // Load asset textures
@@ -16,6 +18,9 @@ impl Resources {
         resources
             .ship_textures
             .insert("lc.phalanx", load_linear_sprite("phalanx.png").await?);
+        resources
+            .bullet_textures
+            .insert("bullet01", load_linear_sprite("bullet01.png").await?);
         Ok(resources)
     }
 }

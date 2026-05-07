@@ -25,6 +25,17 @@ pub fn current_sector_ships(ctx: &ViewContext) -> impl Query<SpaceShip> {
         })
 }
 
+/// View: Returns all bullets in the player's current sector.
+#[view(accessor = current_sector_bullets, public)]
+pub fn current_sector_bullets(ctx: &ViewContext) -> impl Query<Bullet> {
+    ctx.from
+        .player_state()
+        .filter(|player| player.id.eq(ctx.sender()))
+        .right_semijoin(ctx.from.bullet(), |player, bullet| {
+            player.current_sector_id.eq(bullet.sector_id)
+        })
+}
+
 /// View: Returns all sectors in the player's current system that they are
 /// authorized to see (either because they visited them or they are public).
 #[view(accessor = current_system_visible_sectors, public)]
@@ -44,31 +55,6 @@ pub fn current_system_visible_sectors(ctx: &ViewContext) -> impl Query<Sector> {
         })
 }
 
-pub fn __current_system_visible_sectors(ctx: &ViewContext) -> Vec<Sector> {
-    let dsl = spacetimedsl::read_only_dsl(ctx);
-
-    // 1. Get the player's current system ID
-    let player = match dsl.get_player_state_by_id(PlayerStateId::new(ctx.sender())) {
-        Ok(p) => p,
-        Err(_) => return Vec::new(), // Player hasn't joined/initialized
-    };
-
-    let current_sys_id = SystemId::new(*player.get_current_system_id());
-
-    // 2. Filter sectors in this system
-    dsl.get_sectors_by_system_id(current_sys_id)
-        .filter(|sector| {
-            // Logic: Visible if the sector is marked public...
-            if *sector.get_is_public() {
-                return true;
-            }
-            // ...OR if the player has a record in visited_sectors for this ID.
-            dsl.get_visited_sectors_by_player_id(&ctx.sender())
-                .any(|v| *v.get_sector_id() == sector.id && v.get_visited_status().is_visible())
-        })
-        .collect()
-}
-
 /// View: Returns the full System details for every system the player has ever visited.
 #[view(accessor = my_visited_systems, public)]
 pub fn my_visited_systems(ctx: &ViewContext) -> Vec<System> {
@@ -77,11 +63,4 @@ pub fn my_visited_systems(ctx: &ViewContext) -> Vec<System> {
         .filter(|sys| sys.get_visited_status().is_visible())
         .flat_map(|v| dsl.get_system_by_id(SystemId::new(*v.get_system_id())))
         .collect()
-    // ctx.db
-    //     .visited_system()
-    //     .player_id()
-    //     .filter(ctx.sender())
-    //     .filter(|sys| sys.get_visited_status().is_visible())
-    //     .flat_map(|v| ctx.db.system().id().find(v.system_id))
-    //     .collect()
 }

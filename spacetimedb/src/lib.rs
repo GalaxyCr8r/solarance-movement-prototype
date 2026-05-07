@@ -51,14 +51,17 @@ pub fn init(ctx: &ReducerContext) {
     });
 
     dsl.create_system(CreateSystem {
+        id: 1,
         name: "Sol".to_string(),
     });
 
     dsl.create_system(CreateSystem {
+        id: 2,
         name: "Alpha Centauri".to_string(),
     });
 
     dsl.create_system(CreateSystem {
+        id: 3,
         name: "Tau Ceti".to_string(),
     });
 

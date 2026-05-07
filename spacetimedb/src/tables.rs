@@ -41,7 +41,12 @@ pub struct ShipConfig {
 pub struct SpaceShip {
     #[primary_key]
     #[create_wrapper]
-    pub id: Identity,
+    #[auto_inc]
+    pub id: u64,
+
+    #[index(btree)]
+    #[unique]
+    pub player_id: Identity,
 
     #[index(btree)]
     #[use_wrapper(crate::SectorId)]
@@ -55,13 +60,37 @@ pub struct SpaceShip {
     pub health: f32,
     pub movement: physics::MovementState,
     pub input_state: physics::InputState,
+    pub last_fired: spacetimedb::Timestamp,
+}
+
+#[dsl(plural_name = bullets, method(update = true, delete = true))]
+#[table(accessor = bullet)]
+pub struct Bullet {
+    #[primary_key]
+    #[auto_inc]
+    #[create_wrapper]
+    //#[referenced_by(path = crate, table = sector)]
+    pub id: u32,
+
+    #[index(btree)]
+    //#[foreign_key(path = crate, column = id, table = sector, on_delete = Error)]
+    pub player_id: Identity,
+
+    #[index(btree)]
+    #[use_wrapper(crate::SectorId)]
+    //#[foreign_key(path = crate, column = id, table = sector, on_delete = Error)]
+    pub sector_id: u64,
+    /// Microseconds since unix epoch
+    pub lifetime: i64,
+    pub damage: f32,
+    pub movement: physics::MovementState,
+    created_at: spacetimedb::Timestamp,
 }
 
 #[dsl(plural_name = systems, method(update = false, delete = true))]
 #[table(accessor = system)]
 pub struct System {
     #[primary_key]
-    #[auto_inc]
     #[create_wrapper]
     //#[referenced_by(path = crate, table = sector)]
     id: u32,

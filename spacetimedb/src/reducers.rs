@@ -1,3 +1,4 @@
+use log::info;
 use solarance_shared::physics::predict_movement;
 use spacetimedb::*;
 use spacetimedsl::*;
@@ -9,17 +10,14 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
     // Spawn a ship for the player if they don't have one
-    if dsl
-        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
-        .is_err()
-    {
+    if dsl.get_space_ship_by_player_id(&ctx.sender()).is_err() {
         // Get ship configuration to copy max_speed and max_turn_rate
         let config = dsl
             .get_ship_config_by_id(ShipConfigId::new(1))
             .expect("Default ship config not found");
 
         dsl.create_space_ship(CreateSpaceShip {
-            id: ctx.sender(),
+            player_id: ctx.sender(),
             ship_config_id: config.get_id().clone(),
             health: *config.get_max_health() as f32,
             sector_id: SectorId::new(1),
@@ -33,12 +31,14 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
                 angular_acceleration: 0.0,
                 max_speed: *config.get_max_speed(),
                 max_turn_rate: *config.get_max_turn_rate(),
+                dampen_angular_rotation: true,
             },
             input_state: InputState {
                 is_thrusting: false,
                 is_breaking: false,
                 turn_direction: 0,
             },
+            last_fired: ctx.timestamp.clone(),
         })?;
 
         dsl.create_player_state(CreatePlayerState {
@@ -66,11 +66,167 @@ pub fn spawn_ship(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 #[reducer]
+pub fn fire_weapons(ctx: &ReducerContext, fired_at: i64) -> Result<(), String> {
+    let dsl = spacetimedsl::dsl(ctx);
+
+    let mut space_ship = dsl
+        .get_space_ship_by_player_id(&ctx.sender())
+        .map_err(|_| "Ship not found")?;
+
+    // Calculate the ship's position at the time of firing
+    let ship_movement = convert_to_movement_state(&space_ship.movement);
+    let (ship_pos, ship_rot) = if fired_at < space_ship.movement.last_update_time {
+        (ship_movement.pos, ship_movement.rotation)
+    } else {
+        let (p, r, _, _) = predict_movement(&ship_movement, fired_at);
+        (p, r)
+    };
+
+    // Verify that this isn't firing too soon
+    match space_ship
+        .get_last_fired()
+        .checked_add(TimeDuration::from_micros(500_000))
+    {
+        Some(last_fired) => {
+            if last_fired > ctx.timestamp {
+                return Err("Tried firing too soon".to_string());
+            }
+        }
+        None => return Err("Couldn't convert last fired".to_string()),
+    };
+
+    // Create bullet
+    dsl.create_bullet(CreateBullet {
+        player_id: ctx.sender(),
+        sector_id: space_ship.get_sector_id(),
+        damage: 10.0,
+        lifetime: fired_at + 1_000_000,
+        movement: MovementState {
+            pos: Vec2 {
+                x: ship_pos.x,
+                y: ship_pos.y,
+            },
+            velocity: 250.0,
+            rotation: ship_rot,
+            angular_velocity: 0.0,
+            last_update_time: fired_at,
+            acceleration: 0.0,
+            angular_acceleration: 0.0,
+            max_speed: 500.0,
+            max_turn_rate: 0.0,
+            dampen_angular_rotation: true,
+        },
+    })?;
+
+    // Update ship's last fired
+    space_ship.set_last_fired(Timestamp::from_micros_since_unix_epoch(fired_at));
+    dsl.update_space_ship_by_id(space_ship)?;
+
+    Ok(())
+}
+
+/// Called by clients in the same sector as the bullet when they detect a bullet hit any ship in that sector.
+/// This is used to verify that the bullet actually hit the ship.
+#[reducer]
+pub fn submit_hit(
+    ctx: &ReducerContext,
+    hit_at: Timestamp,
+    hit_ship_id: SpaceShipId,
+    bullet_id: BulletId,
+) -> Result<(), String> {
+    let dsl = spacetimedsl::dsl(ctx);
+
+    let reporter_ship = dsl
+        .get_space_ship_by_player_id(&ctx.sender())
+        .map_err(|_| "Ship not found")?;
+
+    let mut hit_ship = dsl
+        .get_space_ship_by_id(hit_ship_id)
+        .map_err(|_| "Ship not found")?;
+
+    if reporter_ship.get_sector_id() != hit_ship.get_sector_id() {
+        return Err("Tried to submit a bullet hit a ship in a different sector!".to_string());
+    }
+
+    let bullet = dsl
+        .get_bullet_by_id(&bullet_id)
+        .map_err(|_| "Bullet not found")?;
+
+    if hit_ship.get_player_id() == bullet.get_player_id() {
+        return Err("Tried to submit a bullet hit on shooter ship!".to_string());
+    }
+
+    info!(
+        "Bullet lifetime: {}",
+        bullet.lifetime - ctx.timestamp.to_micros_since_unix_epoch()
+    );
+
+    if bullet.lifetime < ctx.timestamp.to_micros_since_unix_epoch() {
+        info!("Bullet has expired!");
+        dsl.delete_bullet_by_id(bullet_id)?;
+        return Err("Expired".to_string());
+    }
+
+    // If hit_at is before hit_ship's last movement timestamp, then use it's current originator posiiton.
+    let hit_ship_movement = convert_to_movement_state(&hit_ship.movement);
+    let hit_ship_pos = if hit_at.to_micros_since_unix_epoch() < hit_ship.movement.last_update_time {
+        info!("Using hit_ship's current originator position");
+        hit_ship_movement.pos
+    } else {
+        info!("Predicting movement of the hit ship!");
+        predict_movement(&hit_ship_movement, hit_at.to_micros_since_unix_epoch()).0
+    };
+    info!("Using position! ({}, {})", hit_ship_pos.x, hit_ship_pos.y);
+
+    // Predict the hit_ship's position and bullet's position at timestamp
+    let bullet_movement = convert_to_movement_state(&bullet.movement);
+    let bullet_pos = if hit_at.to_micros_since_unix_epoch() < bullet.movement.last_update_time {
+        info!("Using bullet's current originator position");
+        bullet_movement.pos
+    } else {
+        info!("Predicting movement of the bullet!");
+        predict_movement(&bullet_movement, hit_at.to_micros_since_unix_epoch()).0
+    };
+
+    // Check if they are near each other
+    let distance = hit_ship_pos.distance_to_sq(&bullet_pos);
+    if distance > 32.0 * 32.0 {
+        return Err(format!("Bullet missed! Distance Squared: {}", distance));
+    }
+    info!("Bullet hit! Distance Squared: {}", distance);
+
+    // TODO: Abstract out damage calculation to a function
+    hit_ship.health -= bullet.damage;
+
+    if hit_ship.health <= 0.0 {
+        dsl.delete_space_ship_by_id(&hit_ship)?;
+    } else {
+        dsl.update_space_ship_by_id(hit_ship.clone())?;
+    }
+
+    // If we got this far and dealt damage, then this bullet should be deleted.
+    dsl.delete_bullet_by_id(bullet_id)?;
+
+    // Create damage event
+    dsl.create_damage_event(CreateDamageEvent {
+        sector_id: hit_ship.get_sector_id(),
+        event_type: EventType::Bullet,
+        pos: Vec2 {
+            x: hit_ship_pos.x,
+            y: hit_ship_pos.y,
+        },
+        timestamp: ctx.timestamp.to_micros_since_unix_epoch(),
+    })?;
+
+    Ok(())
+}
+
+#[reducer]
 pub fn travel_to_sector(ctx: &ReducerContext, sector_id: u64) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
     let mut space_ship = dsl
-        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+        .get_space_ship_by_player_id(&ctx.sender())
         .map_err(|_| "Ship not found")?;
 
     let mut player_state = dsl
@@ -93,7 +249,7 @@ pub fn travel_to_sector(ctx: &ReducerContext, sector_id: u64) -> Result<(), Stri
         .get_visited_sectors_by_player_id(&ctx.sender())
         .any(|v| *v.get_sector_id() == sector_id)
     {
-        dsl.create_visited_sector(CreateVisitedSector {
+        let _ = dsl.create_visited_sector(CreateVisitedSector {
             player_id: ctx.sender(),
             sector_id: sector_id,
             visited_status: VisitedStatus::Visited,
@@ -102,8 +258,8 @@ pub fn travel_to_sector(ctx: &ReducerContext, sector_id: u64) -> Result<(), Stri
 
     space_ship.sector_id = sector_id;
     player_state.current_sector_id = sector_id;
-    dsl.update_space_ship_by_id(space_ship);
-    dsl.update_player_state_by_id(player_state);
+    dsl.update_space_ship_by_id(space_ship)?;
+    dsl.update_player_state_by_id(player_state)?;
     Ok(())
 }
 
@@ -112,7 +268,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
     let dsl = spacetimedsl::dsl(ctx);
 
     let mut space_ship = dsl
-        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+        .get_space_ship_by_player_id(&ctx.sender())
         .map_err(|_| "Ship not found")?;
 
     let stats = dsl
@@ -126,7 +282,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
     }
 
     // 2. Synchronize current position BEFORE changing trajectory
-    let (current_pos, current_rot) = predict_movement(
+    let (current_pos, current_rot, _, _) = predict_movement(
         &convert_to_movement_state(&space_ship.movement),
         ctx.timestamp.to_micros_since_unix_epoch(),
     );
@@ -145,6 +301,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
         angular_acceleration: space_ship.movement.angular_acceleration,
         max_speed: space_ship.movement.max_speed,
         max_turn_rate: space_ship.movement.max_turn_rate,
+        dampen_angular_rotation: space_ship.movement.dampen_angular_rotation,
     };
 
     // 4. Update Database
@@ -157,7 +314,7 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
     let dsl = spacetimedsl::dsl(ctx);
 
     let mut space_ship = dsl
-        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+        .get_space_ship_by_player_id(&ctx.sender())
         .map_err(|_| "Ship not found")?;
 
     let stats = dsl
@@ -176,7 +333,7 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
     }
 
     // 2. Synchronize current position/rotation
-    let (current_pos, current_rot) = predict_movement(
+    let (current_pos, current_rot, _, _) = predict_movement(
         &convert_to_movement_state(&space_ship.movement),
         ctx.timestamp.to_micros_since_unix_epoch(),
     );
@@ -195,6 +352,7 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
         angular_acceleration: space_ship.movement.angular_acceleration,
         max_speed: space_ship.movement.max_speed,
         max_turn_rate: space_ship.movement.max_turn_rate,
+        dampen_angular_rotation: space_ship.movement.dampen_angular_rotation,
     };
 
     dsl.update_space_ship_by_id(space_ship);
@@ -210,7 +368,7 @@ pub fn set_thrust_input(
     let dsl = spacetimedsl::dsl(ctx);
 
     let mut space_ship = dsl
-        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+        .get_space_ship_by_player_id(&ctx.sender())
         .map_err(|_| "Ship not found")?;
 
     // Early return if input hasn't changed (Req 3.8)
@@ -235,20 +393,12 @@ pub fn set_thrust_input(
         .map_err(|_| "Ship config not found")?;
 
     let now = ctx.timestamp.to_micros_since_unix_epoch();
-    let dt = (now - space_ship.movement.last_update_time) as f32 / 1_000_000.0;
 
-    // 1. Predict current position and rotation
-    let (predicted_pos, predicted_rot) =
+    // 1. Predict current position, rotation, and velocities from the unified simulation.
+    let (predicted_pos, predicted_rot, predicted_velocity, predicted_angular_velocity) =
         predict_movement(&convert_to_movement_state(&space_ship.movement), now);
 
-    // 2. Calculate predicted velocities: v = v₀ + a*dt, clamped
-    let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
-        .clamp(0.0, *config.get_max_speed());
-    let predicted_angular_velocity = (space_ship.movement.angular_velocity
-        + space_ship.movement.angular_acceleration * dt)
-        .clamp(-*config.get_max_turn_rate(), *config.get_max_turn_rate());
-
-    // 3. Calculate new acceleration based on thrust input
+    // 2. Calculate new acceleration based on thrust input
     let new_acceleration = if is_thrusting {
         *config.get_max_acceleration()
     } else if is_breaking {
@@ -273,6 +423,7 @@ pub fn set_thrust_input(
         last_update_time: now,
         max_speed: *config.get_max_speed(),
         max_turn_rate: *config.get_max_turn_rate(),
+        dampen_angular_rotation: true,
     };
 
     dsl.update_space_ship_by_id(space_ship);
@@ -292,7 +443,7 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
     }
 
     let mut space_ship = dsl
-        .get_space_ship_by_id(SpaceShipId::new(ctx.sender()))
+        .get_space_ship_by_player_id(&ctx.sender())
         .map_err(|_| "Ship not found")?;
 
     // Early return if input hasn't changed (Req 3.8)
@@ -305,20 +456,12 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         .map_err(|_| "Ship config not found")?;
 
     let now = ctx.timestamp.to_micros_since_unix_epoch();
-    let dt = (now - space_ship.movement.last_update_time) as f32 / 1_000_000.0;
 
-    // 1. Predict current position and rotation
-    let (predicted_pos, predicted_rot) =
+    // 1. Predict current position, rotation, and velocities from the unified simulation.
+    let (predicted_pos, predicted_rot, predicted_velocity, predicted_angular_velocity) =
         predict_movement(&convert_to_movement_state(&space_ship.movement), now);
 
-    // 2. Calculate predicted velocities: v = v₀ + a*dt, clamped
-    let predicted_velocity = (space_ship.movement.velocity + space_ship.movement.acceleration * dt)
-        .clamp(0.0, *config.get_max_speed());
-    let predicted_angular_velocity = (space_ship.movement.angular_velocity
-        + space_ship.movement.angular_acceleration * dt)
-        .clamp(-*config.get_max_turn_rate(), *config.get_max_turn_rate());
-
-    // 3. Calculate new angular acceleration based on turn direction
+    // 2. Calculate new angular acceleration based on turn direction
     let new_angular_acceleration = turn_direction as f32 * *config.get_max_angular_acceleration();
 
     // 4. Update input state and movement
@@ -336,8 +479,9 @@ pub fn set_turn_input(ctx: &ReducerContext, turn_direction: i8) -> Result<(), St
         last_update_time: now,
         max_speed: *config.get_max_speed(),
         max_turn_rate: *config.get_max_turn_rate(),
+        dampen_angular_rotation: true,
     };
 
-    dsl.update_space_ship_by_id(space_ship);
+    dsl.update_space_ship_by_id(space_ship)?;
     Ok(())
 }
