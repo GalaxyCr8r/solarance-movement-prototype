@@ -18,22 +18,22 @@ pub struct MovementState {
     pub pos: Vec2,
     /// Pixels per second
     pub velocity: f32,
-    /// Degrees
+    /// Radians
     pub rotation: f32,
-    /// Degrees per second
+    /// Radians per second
     pub angular_velocity: f32,
     /// Microseconds
     pub last_update_time: i64,
     /// Pixels per second squared
     pub acceleration: f32,
-    /// Degrees per second squared
+    /// Radians per second squared
     pub angular_acceleration: f32,
     /// Pixels per second (velocity cap)
     pub max_speed: f32,
-    /// Degrees per second (angular velocity cap)
+    /// Radians per second (angular velocity cap)
     pub max_turn_rate: f32,
     /// When true and angular_acceleration is zero, bleeds angular_velocity toward zero
-    /// at max_turn_rate / 2 degrees per second squared.
+    /// at max_turn_rate / 2 radians per second squared.
     pub dampen_angular_rotation: bool,
 }
 

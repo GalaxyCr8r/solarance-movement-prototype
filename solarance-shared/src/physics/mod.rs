@@ -8,7 +8,7 @@
 //!
 //! ## Coordinate system
 //! * **X** increases to the right, **Y** increases downward (screen space).
-//! * **theta** (rotation/heading) is in **degrees**.  0° points along the
+//! * **theta** (rotation/heading) is in **radians**.  0 points along the
 //!   positive-X axis (right); angles increase clockwise on screen because Y is
 //!   inverted.
 //! * A ship's forward velocity vector is therefore `(cos θ, sin θ)`.
@@ -18,10 +18,10 @@
 //! |------|---------|-------|
 //! | `v` | forward speed (scalar, always ≥ 0) | px/s |
 //! | `a` | linear acceleration (positive = thrust, negative = brake) | px/s² |
-//! | `theta` / `θ` | heading angle | degrees |
-//! | `omega` / `ω` | angular velocity — rate of heading change | deg/s |
-//! | `alpha` / `α` | angular acceleration — rate of ω change | deg/s² |
-//! | `r` | radius of curvature of the ship's arc = v / ω_rad | px |
+//! | `theta` / `θ` | heading angle | radians |
+//! | `omega` / `ω` | angular velocity — rate of heading change | rad/s |
+//! | `alpha` / `α` | angular acceleration — rate of ω change | rad/s² |
+//! | `r` | radius of curvature of the ship's arc = v / ω | px |
 //!
 //! ## How the simulation works
 //! Rather than blindly stepping through all of `dt` with tiny fixed steps,
@@ -64,10 +64,10 @@ pub struct MovementState {
     /// backward.  Units: pixels per second.
     pub velocity: f32,
     /// Heading at `last_update_time`.  See module-level coordinate notes.
-    /// Units: degrees.
+    /// Units: radians.
     pub rotation: f32,
     /// Rate of heading change at `last_update_time`.  Positive = clockwise
-    /// on screen (because Y is down).  Units: degrees per second.
+    /// on screen (because Y is down).  Units: radians per second.
     pub angular_velocity: f32,
     /// When this snapshot was recorded, as microseconds since the Unix epoch.
     /// Used to compute `dt = current_time − last_update_time`.
@@ -78,16 +78,16 @@ pub struct MovementState {
     /// Constant angular acceleration applied from `last_update_time` onward.
     /// Set to ±max_angular_acceleration while the player holds a turn key,
     /// or 0 when the key is released (dampening then bleeds ω to zero).
-    /// Units: degrees/s².
+    /// Units: radians/s².
     pub angular_acceleration: f32,
     /// Hard cap on forward speed.  `v` is never allowed to exceed this.
     /// Units: pixels per second.
     pub max_speed: f32,
     /// Hard cap on angular speed.  `|ω|` is never allowed to exceed this.
-    /// Units: degrees per second.
+    /// Units: radians per second.
     pub max_turn_rate: f32,
     /// When `true` and `angular_acceleration == 0`, `ω` bleeds toward zero
-    /// at `max_turn_rate / 2` degrees per second squared.  This simulates
+    /// at `max_turn_rate / 2` radians per second squared.  This simulates
     /// rotational friction so ships don't spin forever after releasing a
     /// turn key.
     pub dampen_angular_rotation: bool,
@@ -99,7 +99,7 @@ pub struct MovementState {
 
 /// Extrapolates a ship's state from `state.last_update_time` to `current_time`.
 ///
-/// Returns `(position, heading_degrees, speed_px_per_s, angular_velocity_deg_per_s)`.
+/// Returns `(position, heading_radians, speed_px_per_s, angular_velocity_rad_per_s)`.
 ///
 /// All four values are produced by a single unified simulation pass, so they
 /// are always mutually consistent (no risk of position and velocity drifting
@@ -140,15 +140,15 @@ fn simulate(state: &MovementState, total_dt: f32) -> (Vec2, f32, f32, f32) {
     // Rotational-friction deceleration rate when dampening is active (half of max turn rate).
     let decel_rate = state.max_turn_rate / 2.0;
     let a = state.acceleration;       // linear acceleration (px/s²)
-    let alpha = state.angular_acceleration; // angular acceleration (deg/s²)
+    let alpha = state.angular_acceleration; // angular acceleration (rad/s²)
     let dampen = state.dampen_angular_rotation;
 
     // Working state — mutated each phase.
     let mut x = state.pos.x;
     let mut y = state.pos.y;
-    let mut theta = state.rotation;          // heading in degrees
+    let mut theta = state.rotation;          // heading in radians
     let mut v = state.velocity.max(0.0);     // clamp out any stale negative velocity
-    let mut omega = state.angular_velocity;  // angular velocity in deg/s
+    let mut omega = state.angular_velocity;  // angular velocity in rad/s
 
     let mut remaining = total_dt;
 
@@ -197,10 +197,10 @@ fn simulate(state: &MovementState, total_dt: f32) -> (Vec2, f32, f32, f32) {
         remaining -= phase_dt;
     }
 
-    // Normalise heading to [0°, 360°) so callers never see e.g. 400° or −10°.
-    theta %= 360.0;
+    // Normalise heading to [0, 2π) so callers never see e.g. 7 rad or −0.5 rad.
+    theta %= std::f32::consts::TAU;
     if theta < 0.0 {
-        theta += 360.0;
+        theta += std::f32::consts::TAU;
     }
 
     (Vec2 { x, y }, theta, v, omega)
@@ -301,9 +301,8 @@ fn constant_omega_phase(
         // ── Straight-line motion ────────────────────────────────────────────
         if a.abs() < f32::EPSILON {
             // Constant speed: Δpos = v · dt · (cos θ, sin θ)
-            let theta_rad = theta.to_radians();
-            *x += theta_rad.cos() * *v * dt;
-            *y += theta_rad.sin() * *v * dt;
+            *x += theta.cos() * *v * dt;
+            *y += theta.sin() * *v * dt;
         } else if *v <= 0.0 && a < 0.0 {
             // Ship is already stopped and braking: nothing to do.
             // Without this guard, d = ½·a·dt² would be negative and push the
@@ -312,21 +311,19 @@ fn constant_omega_phase(
             // Kinematic formula: d = v₀·t + ½·a·t²
             // dt is bounded by t_v so v stays within [0, max_v].
             let d = *v * dt + 0.5 * a * dt * dt;
-            let theta_rad = theta.to_radians();
-            *x += theta_rad.cos() * d;
-            *y += theta_rad.sin() * d;
+            *x += theta.cos() * d;
+            *y += theta.sin() * d;
             *v = (*v + a * dt).max(0.0); // floor at 0; caller snaps exactly at boundary
         }
     } else if a.abs() < f32::EPSILON {
         // ── Pure circular arc (analytical) ─────────────────────────────────
-        // Radius of curvature: r = v / ω  (in radians/s, so convert ω first).
+        // Radius of curvature: r = v / ω.
         // Integrating the heading vector over the arc yields:
         //   Δx =  r · (sin θ₁ − sin θ₀)
         //   Δy = −r · (cos θ₁ − cos θ₀)
-        let omega_rad = omega.to_radians();
-        let theta0 = theta.to_radians();
-        let theta1 = theta0 + omega_rad * dt;
-        let r = *v / omega_rad;
+        let theta0 = *theta;
+        let theta1 = theta0 + omega * dt;
+        let r = *v / omega;
         *x += r * (theta1.sin() - theta0.sin());
         *y -= r * (theta1.cos() - theta0.cos());
         *theta += omega * dt; // heading advances at constant ω
@@ -337,9 +334,8 @@ fn constant_omega_phase(
         const STEPS: usize = 20;
         let step_dt = dt / STEPS as f32;
         for _ in 0..STEPS {
-            let theta_rad = theta.to_radians();
-            *x += theta_rad.cos() * *v * step_dt;
-            *y += theta_rad.sin() * *v * step_dt;
+            *x += theta.cos() * *v * step_dt;
+            *y += theta.sin() * *v * step_dt;
             *theta += omega * step_dt;
             *v = (*v + a * step_dt).clamp(0.0, max_v);
         }
@@ -380,7 +376,7 @@ fn numerical_phase(
 
         // ── Update ω ───────────────────────────────────────────────────────
         if dampen && alpha.abs() < f32::EPSILON {
-            // Rotational friction: bleed ω toward zero at `decel_rate` deg/s².
+            // Rotational friction: bleed ω toward zero at `decel_rate` rad/s².
             // Cap the decrement so we don't overshoot zero in a single step.
             let d_omega = -omega.signum() * decel_rate * step_dt;
             if d_omega.abs() >= omega.abs() {
@@ -394,9 +390,8 @@ fn numerical_phase(
         }
 
         // ── Update position (forward Euler, using heading at start of step) ─
-        let theta_rad = theta.to_radians();
-        *x += theta_rad.cos() * *v * step_dt;
-        *y += theta_rad.sin() * *v * step_dt;
+        *x += theta.cos() * *v * step_dt;
+        *y += theta.sin() * *v * step_dt;
 
         // ── Update heading (trapezoidal rule) ──────────────────────────────
         // Average of ω before and after the ω update eliminates the first-
@@ -412,19 +407,6 @@ fn numerical_phase(
 // Utilities
 // ---------------------------------------------------------------------------
 
-/// Converts a heading in degrees to a unit direction vector.
-///
-/// Convention: 0° points "north" (up the screen), angles increase clockwise.
-/// Returns `(sin θ, cos θ)` — note the swapped order vs. the simulation
-/// internals, which use 0° = east.  This function is intended for rendering
-/// or gameplay logic that uses the north-up convention.
-pub fn rotation_to_vector(degrees: f32) -> Vec2 {
-    let radians = degrees.to_radians();
-    Vec2 {
-        x: radians.sin(),
-        y: radians.cos(),
-    }
-}
 
 #[cfg(test)]
 mod tests;

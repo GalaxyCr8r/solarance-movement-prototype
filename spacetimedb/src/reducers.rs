@@ -310,7 +310,7 @@ pub fn set_forward_thrust(ctx: &ReducerContext, meters_per_second: f32) -> Resul
 }
 
 #[reducer]
-pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Result<(), String> {
+pub fn set_turn_velocity(ctx: &ReducerContext, radians_per_second: f32) -> Result<(), String> {
     let dsl = spacetimedsl::dsl(ctx);
 
     let mut space_ship = dsl
@@ -323,8 +323,9 @@ pub fn set_turn_velocity(ctx: &ReducerContext, degrees_per_second: f32) -> Resul
 
     // 1. Enforce Turn Limits
     let mut clamped_turn =
-        degrees_per_second.clamp(-*stats.get_max_turn_rate(), *stats.get_max_turn_rate());
-    if clamped_turn.abs() < 0.25 {
+        radians_per_second.clamp(-*stats.get_max_turn_rate(), *stats.get_max_turn_rate());
+    // ~0.25 deg/s expressed in radians — below this we treat the ship as not turning.
+    if clamped_turn.abs() < 0.25_f32.to_radians() {
         clamped_turn = 0.0;
     }
 

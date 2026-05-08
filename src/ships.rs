@@ -79,7 +79,7 @@ impl ShipManager {
             draw_line(pos.x - 16.0, pos.y, pos.x + 16.0, pos.y, 2.0, WHITE);
             draw_line(pos.x, pos.y - 16.0, pos.x, pos.y + 16.0, 2.0, WHITE);
 
-            draw_ship(pos.x, pos.y, rotation.to_radians());
+            draw_ship(pos.x, pos.y, rotation);
 
             draw_text(
                 &format!("Hull: {}", ship.state.health),

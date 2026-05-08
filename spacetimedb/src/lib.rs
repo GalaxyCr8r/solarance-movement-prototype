@@ -21,9 +21,11 @@ pub fn init(ctx: &ReducerContext) {
         id: 1,
         max_health: 100,
         max_speed: 150.0,
-        max_turn_rate: 80.0,
+        // 80 deg/s in radians
+        max_turn_rate: 80.0_f32.to_radians(),
         max_acceleration: 100.0,
-        max_angular_acceleration: 180.0,
+        // 180 deg/s² in radians (= π)
+        max_angular_acceleration: std::f32::consts::PI,
     });
 
     dsl.create_sector(CreateSector {

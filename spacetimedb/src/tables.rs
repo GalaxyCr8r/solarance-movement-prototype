@@ -31,9 +31,9 @@ pub struct ShipConfig {
     id: u32,
     max_health: u16,
     max_speed: f32,                // meters per second
-    max_turn_rate: f32,            // degrees per second
+    max_turn_rate: f32,            // radians per second
     max_acceleration: f32,         // meters per second²
-    max_angular_acceleration: f32, // degrees per second²
+    max_angular_acceleration: f32, // radians per second²
 }
 
 #[dsl(plural_name = space_ships, method(update = true, delete = true))]
